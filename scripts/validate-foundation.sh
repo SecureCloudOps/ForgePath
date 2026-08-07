@@ -26,7 +26,6 @@ required_directories=(
 
 empty_directories=(
   platform
-  policies
   gitops
 )
 

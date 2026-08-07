@@ -28,5 +28,5 @@ jobs:
       - name: Install pinned validation tools
         uses: jdx/mise-action@be3be2260bc02bc3fbf94c5e2fed8b7964baf074 # v3.4.0
 
-      - name: Run local validation entry point
+      - name: Run local policy and security validation
         run: make validate-security

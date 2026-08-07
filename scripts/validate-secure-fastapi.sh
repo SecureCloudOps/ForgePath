@@ -184,30 +184,14 @@ if [[ "$rendered_kinds" != "$expected_kinds" ]]; then
 fi
 
 deployment_json="$(yq -o=json 'select(.kind == "Deployment")' "$work_directory/manifests.yaml")"
-service_account_json="$(yq -o=json 'select(.kind == "ServiceAccount")' "$work_directory/manifests.yaml")"
-network_policy_json="$(yq -o=json 'select(.kind == "NetworkPolicy")' "$work_directory/manifests.yaml")"
 
 jq -e '
-  .spec.template.spec.automountServiceAccountToken == false and
-  .spec.template.spec.securityContext.runAsNonRoot == true and
   .spec.template.spec.securityContext.runAsUser == 10001 and
   .spec.template.spec.securityContext.seccompProfile.type == "RuntimeDefault" and
-  .spec.template.spec.containers[0].securityContext.allowPrivilegeEscalation == false and
   .spec.template.spec.containers[0].securityContext.readOnlyRootFilesystem == true and
-  (.spec.template.spec.containers[0].securityContext.capabilities.drop | index("ALL")) != null and
-  .spec.template.spec.containers[0].resources.requests.cpu != null and
-  .spec.template.spec.containers[0].resources.requests.memory != null and
-  .spec.template.spec.containers[0].resources.limits.cpu != null and
-  .spec.template.spec.containers[0].resources.limits.memory != null and
   .spec.template.spec.containers[0].livenessProbe.httpGet.path == "/health/live" and
-  .spec.template.spec.containers[0].readinessProbe.httpGet.path == "/health/ready" and
-  (.spec.template.spec.containers[0].image | test(":latest$") | not)
+  .spec.template.spec.containers[0].readinessProbe.httpGet.path == "/health/ready"
 ' <<<"$deployment_json" >/dev/null
-jq -e '.automountServiceAccountToken == false' <<<"$service_account_json" >/dev/null
-jq -e '
-  .spec.policyTypes == ["Ingress", "Egress"] and
-  .spec.ingress == [] and .spec.egress == []
-' <<<"$network_policy_json" >/dev/null
 
 jq -e '.metadata.name and .spec.owner and .spec.type == "service" and .metadata.annotations["backstage.io/techdocs-ref"] == "dir:."' \
   < <(yq -o=json "$rendered/catalog-info.yaml") >/dev/null

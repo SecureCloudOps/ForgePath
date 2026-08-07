@@ -1,4 +1,4 @@
-.PHONY: validate-foundation validate-secure-fastapi validate-security
+.PHONY: validate-foundation validate-policy validate-secure-fastapi validate-security
 
 validate-foundation:
 	@if command -v shellcheck >/dev/null; then \
@@ -20,7 +20,16 @@ validate-secure-fastapi:
 	fi
 	@./scripts/validate-secure-fastapi.sh
 
-validate-security:
+validate-policy:
+	@if command -v mise >/dev/null; then \
+		mise exec -- shellcheck scripts/validate-policy.sh; \
+		mise exec -- ./scripts/validate-policy.sh; \
+	else \
+		shellcheck scripts/validate-policy.sh; \
+		./scripts/validate-policy.sh; \
+	fi
+
+validate-security: validate-policy
 	@if command -v mise >/dev/null; then \
 		mise exec -- shellcheck scripts/validate-secure-fastapi.sh; \
 		mise exec -- ./scripts/validate-secure-fastapi.sh; \

@@ -38,3 +38,16 @@ scanning, Dockerfile and Kubernetes misconfiguration scanning, Kubeconform,
 and Helm lint/render checks. Synthetic negative fixtures prove that the scanners
 reject secrets, insecure container and Kubernetes configurations, schema-invalid
 manifests, and overprivileged RBAC.
+
+## Validate platform policy
+
+ForgePath's Kubernetes rules are centralized as OPA/Rego in `policies/` and are
+evaluated by Conftest against Helm-rendered manifests. The standalone policy gate
+also exercises a synthetic negative fixture for every enforced rule:
+
+```sh
+make validate-policy
+```
+
+`make validate-security` depends on this target, so CI and local security
+validation execute the exact same policy checks.

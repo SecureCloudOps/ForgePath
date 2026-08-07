@@ -1,0 +1,21 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: non-root
+spec:
+  template:
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: false
+      containers:
+        - name: application
+          image: example.invalid/application:1.0.0
+          securityContext:
+            allowPrivilegeEscalation: false
+            privileged: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: 500m, memory: 256Mi}

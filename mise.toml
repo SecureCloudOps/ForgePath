@@ -1,4 +1,5 @@
 [tools]
+conftest = "0.69.0"
 gitleaks = "8.30.0"
 helm = "4.0.4"
 jq = "1.8.1"
