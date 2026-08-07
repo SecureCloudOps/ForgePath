@@ -7,7 +7,7 @@ cd "$repository_root"
 
 python_bin="${PYTHON_BIN:-python3.12}"
 
-for tool in "$python_bin" docker helm jq yq; do
+for tool in "$python_bin" docker gitleaks helm jq kubeconform semgrep trivy yq; do
   if ! command -v "$tool" >/dev/null; then
     printf 'required tool not found: %s\n' "$tool" >&2
     exit 1
@@ -25,6 +25,42 @@ rendered="$work_directory/rendered"
 second_render="$work_directory/rendered-second"
 venv="$work_directory/venv"
 image="forgepath/secure-fastapi-validation:0.1.0"
+trivy_cache="$work_directory/trivy-cache"
+schema_cache="$work_directory/kubeconform-cache"
+mkdir -p "$schema_cache"
+
+expect_exit_one() {
+  local description="$1"
+  shift
+  local status
+
+  set +e
+  "$@" >/dev/null 2>&1
+  status=$?
+  set -e
+  if [[ "$status" -ne 1 ]]; then
+    printf '%s: expected exit code 1, got %s\n' "$description" "$status" >&2
+    exit 1
+  fi
+}
+
+assert_trivy_rejects() {
+  local description="$1"
+  local target="$2"
+  local report="$3"
+
+  trivy config --cache-dir "$trivy_cache" --exit-code 0 \
+    --format json --output "$report" --severity HIGH,CRITICAL "$target"
+  if ! jq -e \
+    '[.Results[]?.Misconfigurations[]? | select(.Severity == "HIGH" or .Severity == "CRITICAL")] | length > 0' \
+    "$report" >/dev/null; then
+    printf '%s: Trivy did not report a high or critical misconfiguration\n' \
+      "$description" >&2
+    exit 1
+  fi
+  expect_exit_one "$description" trivy config --cache-dir "$trivy_cache" \
+    --exit-code 1 --quiet --severity HIGH,CRITICAL "$target"
+}
 
 "$python_bin" templates/secure-fastapi-service/render.py \
   --output "$rendered" --service-name example-fastapi
@@ -49,7 +85,31 @@ fi
   "$venv/bin/pip" check
 )
 
+semgrep scan --config .semgrep.yml --disable-version-check --error --no-git-ignore \
+  --metrics=off "$rendered/app" "$rendered/tests"
+
+gitleaks git --config .gitleaks.toml --exit-code 1 --no-banner --redact .
+gitleaks dir --config .gitleaks.toml --exit-code 1 --no-banner --redact .
+
+mkdir -p "$work_directory/negative-secret"
+cp tests/security/fixtures/fake-secret.txt \
+  "$work_directory/negative-secret/committed-fake-secret.txt"
+expect_exit_one "synthetic committed secret fixture" gitleaks dir \
+  --config .gitleaks.toml --exit-code 1 --no-banner --redact \
+  "$work_directory/negative-secret"
+
+trivy fs --cache-dir "$trivy_cache" --exit-code 1 --scanners vuln \
+  --severity HIGH,CRITICAL --skip-version-check "$rendered"
+mkdir -p "$work_directory/development-dependencies"
+cp "$rendered/requirements-dev.txt" \
+  "$work_directory/development-dependencies/requirements.txt"
+trivy fs --cache-dir "$trivy_cache" --exit-code 1 --scanners vuln \
+  --severity HIGH,CRITICAL --skip-version-check \
+  "$work_directory/development-dependencies"
+
 docker build --tag "$image" "$rendered"
+trivy image --cache-dir "$trivy_cache" --exit-code 1 --scanners vuln \
+  --severity HIGH,CRITICAL --skip-version-check "$image"
 container_user="$(docker image inspect "$image" --format '{{.Config.User}}')"
 if [[ "$container_user" != "10001:10001" ]]; then
   printf 'container user must be 10001:10001, got: %s\n' "$container_user" >&2
@@ -87,6 +147,26 @@ if helm lint "$rendered/chart" --set image.tag=latest >/dev/null 2>&1; then
   exit 1
 fi
 helm template validation "$rendered/chart" >"$work_directory/manifests.yaml"
+
+kubeconform -cache "$schema_cache" -exit-on-error -kubernetes-version 1.32.0 \
+  -strict -summary "$work_directory/manifests.yaml"
+expect_exit_one "schema-invalid Kubernetes fixture" kubeconform \
+  -cache "$schema_cache" -exit-on-error -kubernetes-version 1.32.0 \
+  -strict tests/security/fixtures/invalid-manifest.yaml
+
+trivy config --cache-dir "$trivy_cache" --exit-code 1 \
+  --severity HIGH,CRITICAL "$rendered/Dockerfile"
+trivy config --cache-dir "$trivy_cache" --exit-code 1 \
+  --severity HIGH,CRITICAL "$work_directory/manifests.yaml"
+assert_trivy_rejects "insecure container fixture" \
+  tests/security/fixtures/insecure/Dockerfile \
+  "$work_directory/insecure-container.json"
+assert_trivy_rejects "insecure Kubernetes fixture" \
+  tests/security/fixtures/insecure/deployment.yaml \
+  "$work_directory/insecure-kubernetes.json"
+assert_trivy_rejects "policy-violating Kubernetes fixture" \
+  tests/security/fixtures/policy-violation.yaml \
+  "$work_directory/policy-violation.json"
 
 # Validate every rendered document has the Kubernetes envelope, then assert the
 # expected resource set. This deliberately stays offline rather than consulting
@@ -140,4 +220,4 @@ for document in README.md docs/RUNBOOK.md docs/SECURITY.md catalog-info.yaml mkd
   test -s "$rendered/$document"
 done
 
-printf 'secure-fastapi-service validation passed.\n'
+printf 'secure-fastapi-service quality and security validation passed.\n'

@@ -1,0 +1,24 @@
+rules:
+  - id: python-dangerous-eval
+    message: Do not execute dynamically evaluated Python.
+    severity: ERROR
+    languages: [python]
+    pattern-either:
+      - pattern: eval(...)
+      - pattern: exec(...)
+
+  - id: python-subprocess-shell-true
+    message: Do not invoke subprocesses through a shell.
+    severity: ERROR
+    languages: [python]
+    patterns:
+      - pattern: subprocess.$FUNC(..., shell=True, ...)
+
+  - id: python-unsafe-deserialization
+    message: Do not deserialize untrusted data with pickle or unsafe YAML loading.
+    severity: ERROR
+    languages: [python]
+    pattern-either:
+      - pattern: pickle.loads(...)
+      - pattern: pickle.load(...)
+      - pattern: yaml.load(...)

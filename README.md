@@ -23,9 +23,18 @@ make validate-foundation
 
 ## Validate the secure FastAPI paved path
 
-The validation requires Python 3.12, Docker, Helm, jq, and yq. It
-creates only temporary files and a local container image.
+Install the pinned validation toolchain with `mise install`. The validation also
+requires a running Docker engine. It creates only temporary files and a local
+container image.
 
 ```sh
-make validate-secure-fastapi
+mise install
+make validate-security
 ```
+
+This single fail-closed entry point runs formatting, linting, type checking,
+unit tests, secret scanning, SAST, dependency and container vulnerability
+scanning, Dockerfile and Kubernetes misconfiguration scanning, Kubeconform,
+and Helm lint/render checks. Synthetic negative fixtures prove that the scanners
+reject secrets, insecure container and Kubernetes configurations, schema-invalid
+manifests, and overprivileged RBAC.

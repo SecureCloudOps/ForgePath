@@ -1,0 +1,14 @@
+title = "ForgePath Gitleaks configuration"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "forgepath-synthetic-secret"
+description = "ForgePath synthetic secret used only by negative tests"
+regex = '''FORGEPATH_SYNTHETIC_SECRET_[A-Z0-9]{20}'''
+keywords = ["FORGEPATH_SYNTHETIC_SECRET_"]
+
+[allowlist]
+description = "Synthetic negative-test fixtures are exercised separately"
+paths = ['''tests/security/fixtures/fake-secret\.txt''']

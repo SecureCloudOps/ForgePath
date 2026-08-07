@@ -21,7 +21,7 @@ arguments and does not require network access or a template engine.
 From the ForgePath repository root:
 
 ```sh
-make validate-secure-fastapi
+make validate-security
 ```
 
 See the generated service README for development and deployment instructions.

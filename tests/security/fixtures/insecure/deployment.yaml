@@ -1,0 +1,19 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: intentionally-insecure
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: intentionally-insecure
+  template:
+    metadata:
+      labels:
+        app: intentionally-insecure
+    spec:
+      containers:
+        - name: application
+          image: example.invalid/insecure:latest
+          securityContext:
+            privileged: true

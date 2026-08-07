@@ -1,0 +1,17 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: intentionally-invalid
+spec:
+  replicas: not-an-integer
+  selector:
+    matchLabels:
+      app: intentionally-invalid
+  template:
+    metadata:
+      labels:
+        app: intentionally-invalid
+    spec:
+      containers:
+        - name: application
+          image: example.invalid/application:0.1.0

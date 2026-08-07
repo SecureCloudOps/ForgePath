@@ -24,6 +24,12 @@ required_directories=(
   tests
 )
 
+empty_directories=(
+  platform
+  policies
+  gitops
+)
+
 for file in "${required_files[@]}"; do
   if [[ ! -s "$file" ]]; then
     printf 'missing or empty required file: %s\n' "$file" >&2
@@ -41,7 +47,9 @@ for directory in "${required_directories[@]}"; do
     printf 'missing required directory: %s\n' "$directory" >&2
     exit 1
   fi
+done
 
+for directory in "${empty_directories[@]}"; do
   if find "$directory" -mindepth 1 -print -quit | grep -q .; then
     printf 'foundation directory must be empty: %s\n' "$directory" >&2
     exit 1

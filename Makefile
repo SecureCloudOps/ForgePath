@@ -1,4 +1,4 @@
-.PHONY: validate-foundation validate-secure-fastapi
+.PHONY: validate-foundation validate-secure-fastapi validate-security
 
 validate-foundation:
 	@if command -v shellcheck >/dev/null; then \
@@ -19,3 +19,12 @@ validate-secure-fastapi:
 		echo 'shellcheck is required (install it directly or with mise)' >&2; exit 1; \
 	fi
 	@./scripts/validate-secure-fastapi.sh
+
+validate-security:
+	@if command -v mise >/dev/null; then \
+		mise exec -- shellcheck scripts/validate-secure-fastapi.sh; \
+		mise exec -- ./scripts/validate-secure-fastapi.sh; \
+	else \
+		shellcheck scripts/validate-secure-fastapi.sh; \
+		./scripts/validate-secure-fastapi.sh; \
+	fi
