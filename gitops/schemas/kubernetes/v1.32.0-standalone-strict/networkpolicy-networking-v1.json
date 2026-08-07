@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["apiVersion", "kind", "metadata", "spec"],
+  "properties": {
+    "apiVersion": {"const": "networking.k8s.io/v1"},
+    "kind": {"const": "NetworkPolicy"},
+    "metadata": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {"name": {"type": "string"}, "labels": {"type": "object"}},
+      "additionalProperties": true
+    },
+    "spec": {
+      "type": "object",
+      "required": ["podSelector", "policyTypes"],
+      "properties": {
+        "podSelector": {"type": "object"},
+        "policyTypes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"enum": ["Ingress", "Egress"]}
+        },
+        "ingress": {"type": "array"},
+        "egress": {"type": "array"}
+      },
+      "additionalProperties": false
+    }
+  }
+}

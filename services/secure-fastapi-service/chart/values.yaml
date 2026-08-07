@@ -1,7 +1,7 @@
 replicaCount: 2
 
 image:
-  repository: example.invalid/__FORGEPATH_SERVICE_NAME__
+  repository: example.invalid/secure-fastapi-service
   digest: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
   pullPolicy: IfNotPresent
 

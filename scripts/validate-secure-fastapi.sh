@@ -142,8 +142,8 @@ docker exec forgepath-secure-fastapi-validation \
 docker stop forgepath-secure-fastapi-validation >/dev/null
 
 helm lint "$rendered/chart"
-if helm lint "$rendered/chart" --set image.tag=latest >/dev/null 2>&1; then
-  printf 'Helm schema must reject a mutable latest image tag\n' >&2
+if helm lint "$rendered/chart" --set image.digest=latest >/dev/null 2>&1; then
+  printf 'Helm schema must reject a mutable image reference\n' >&2
   exit 1
 fi
 helm template validation "$rendered/chart" >"$work_directory/manifests.yaml"
@@ -197,7 +197,7 @@ jq -e '.metadata.name and .spec.owner and .spec.type == "service" and .metadata.
   < <(yq -o=json "$rendered/catalog-info.yaml") >/dev/null
 yq -e '.site_name and .docs_dir == "docs" and .plugins[] == "techdocs-core"' \
   "$rendered/mkdocs.yml" >/dev/null
-jq -e '.type == "object" and .properties.image.properties.tag.not.pattern' \
+jq -e '.type == "object" and .properties.image.properties.digest.pattern == "^sha256:[a-f0-9]{64}$"' \
   "$rendered/chart/values.schema.json" >/dev/null
 
 for document in README.md docs/RUNBOOK.md docs/SECURITY.md catalog-info.yaml mkdocs.yml; do

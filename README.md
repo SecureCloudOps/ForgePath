@@ -74,3 +74,19 @@ ignored by Git. `metadata.json` binds the archive, digest, SBOM, scan report,
 signature, source revision, and reproducible source timestamp. The validator
 also exercises rejection of unsigned artifacts, mismatched metadata, missing
 SBOMs, and invalid signatures.
+
+## Validate static GitOps desired state
+
+The local desired state promotes only an already trusted
+`secure-fastapi-service` image digest. Validation is offline and does not create
+a cluster, install Argo CD, or contact a Kubernetes API:
+
+```sh
+make validate-gitops-static
+```
+
+This renders the application-owned Helm chart with `gitops/` environment
+values, validates local Kubernetes schemas and OPA policies, checks the exact
+trusted digest, and exercises the GitOps negative suite. See
+[`gitops/README.md`](gitops/README.md) for structure, ownership, promotion, and
+Git-revert rollback semantics.

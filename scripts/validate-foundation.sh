@@ -26,7 +26,6 @@ required_directories=(
 
 empty_directories=(
   platform
-  gitops
 )
 
 for file in "${required_files[@]}"; do

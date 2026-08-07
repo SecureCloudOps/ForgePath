@@ -1,0 +1,24 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: secure-fastapi-service-local
+  namespace: argocd
+spec:
+  project: forgepath-local
+  source:
+    repoURL: git@github.com:SecureCloudOps/ForgePath.git
+    targetRevision: main
+    path: services/secure-fastapi-service/chart
+    helm:
+      releaseName: secure-fastapi-service
+      valueFiles:
+        - ../../../gitops/environments/local/secure-fastapi-service/values.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: secure-fastapi-service-local
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ApplyOutOfSyncOnly=true

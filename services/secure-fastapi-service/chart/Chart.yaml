@@ -1,0 +1,6 @@
+apiVersion: v2
+name: secure-fastapi-service
+description: Helm chart for secure-fastapi-service
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

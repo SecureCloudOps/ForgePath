@@ -1,0 +1,97 @@
+# ForgePath static GitOps desired state
+
+This directory is the Git-managed desired state for one environment (`local`)
+and one service (`secure-fastapi-service`). It is intentionally static: no
+command in this model creates a cluster, installs Argo CD, calls a Kubernetes
+API, or publishes an artifact.
+
+## Repository structure
+
+```text
+gitops/
+├── applications/
+│   └── secure-fastapi-service-local.yaml
+├── environments/
+│   └── local/
+│       └── secure-fastapi-service/
+│           └── values.yaml
+├── projects/
+│   └── forgepath-local.yaml
+└── schemas/
+    └── kubernetes/
+        └── v1.32.0-standalone-strict/
+```
+
+The Application renders the application-owned chart at
+`services/secure-fastapi-service/chart` with the local environment values. The
+values contain the repository and exact `sha256` digest copied from validated
+trusted-artifact metadata. A tag is neither required nor accepted by the chart.
+
+The `forgepath-local` AppProject accepts only the ForgePath repository, the
+in-cluster API destination, and the `secure-fastapi-service-local` namespace.
+Its namespace allowlist contains only Deployment, Service, ServiceAccount, and
+NetworkPolicy. Every cluster-scoped kind is blacklisted, which also means this
+model does not create its destination namespace. Secret is absent from the
+allowlist and rendered Secrets fail validation.
+
+There is one Application and no ApplicationSet because no current fan-out or
+multi-environment requirement exists.
+
+## Trust handoff and validation
+
+The trusted artifact pipeline produces `.forgepath/trusted-artifact/metadata.json`
+and publishes `TRUSTED` only after build, scan, SBOM, and signature validation.
+That evidence directory is local and Git-ignored. In CI, provide the same
+pipeline output and set `TRUSTED_ARTIFACT_METADATA` if it is stored elsewhere.
+
+Run the offline desired-state gate with the pinned `mise` toolchain:
+
+```sh
+mise install
+make validate-gitops-static
+```
+
+The gate:
+
+1. validates the AppProject and Application restrictions;
+2. checks the desired repository and digest against trusted metadata and the
+   trusted marker;
+3. lints and renders the Helm chart using the local GitOps values;
+4. validates the rendered native resources with Kubeconform and repository-local
+   Kubernetes 1.32 schema snapshots, without schema downloads;
+5. evaluates the existing OPA/Rego rules with Conftest;
+6. confirms every rendered container uses the exact trusted
+   `repository@sha256:digest` reference; and
+7. runs negative tests for digest mismatch, mutable references, unauthorized
+   namespace and repository, Secret, cluster-scoped resources, and a
+   policy-violating Helm render.
+
+## Promotion
+
+Promotion is a reviewed Git change to the environment `values.yaml`. Select an
+artifact that the trusted-artifact pipeline has already accepted, then update
+both `image.repository` and `image.digest` from that artifact's metadata. Run
+`make validate-gitops-static` with that trusted metadata before merging. Argo CD
+later observes the merged Git commit and reconciles it; it does not decide what
+is trusted or perform promotion.
+
+## Rollback
+
+Rollback is a Git revert or a new reviewed commit that restores the repository
+and digest of a previously trusted artifact. Validate that commit against the
+corresponding trusted metadata before merging it. Do not use imperative Argo CD
+rollback as the delivery model, because that would make live state diverge from
+Git.
+
+## Ownership boundaries
+
+| Boundary | Owns |
+| --- | --- |
+| Application repository | Source code, tests, Dockerfile, and Helm chart |
+| Trusted artifact pipeline | Build, scan, SBOM, signature, and trusted digest metadata |
+| GitOps desired state | Environment configuration, approved artifact digest, Application, and AppProject |
+| Argo CD | Reconciliation only |
+| Kubernetes | Runtime state only |
+
+The destination namespace and Argo CD installation are prerequisites owned
+outside this static model. This repository does not apply either resource.

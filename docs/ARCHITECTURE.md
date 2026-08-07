@@ -21,6 +21,8 @@ Trivy report, SPDX JSON SBOM, local Cosign signature, and machine-readable
 metadata. A trusted marker is published atomically only after all evidence is
 validated. Local signing keys are ephemeral and no artifact is published.
 
-Git will hold desired state, and GitOps reconciliation remains the only intended
-application delivery path. Those later delivery stages are roadmap items and
-are not implemented here.
+Git now holds a static desired-state model for the local environment. Its
+restricted AppProject, single Application, environment values, and offline
+validation prove the trusted digest handoff without installing Argo CD or
+contacting Kubernetes. Argo CD reconciliation and Kubernetes runtime state
+remain later operational stages; Kyverno is still a roadmap item.

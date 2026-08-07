@@ -44,7 +44,7 @@ The base image is pinned by digest and the runtime user is UID/GID 10001.
 helm lint chart
 helm template __FORGEPATH_SERVICE_NAME__ chart \
   --set image.repository=registry.example.com/__FORGEPATH_SERVICE_NAME__ \
-  --set image.tag=0.1.0
+  --set image.digest=sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 ```
 
 The default NetworkPolicy denies all ingress and egress. Enable

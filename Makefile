@@ -1,6 +1,17 @@
 .PHONY: build-trusted-artifact test-trusted-artifact validate-foundation \
-	validate-policy validate-secure-fastapi validate-security \
-	validate-trusted-artifact
+	validate-gitops-static validate-policy validate-secure-fastapi \
+	validate-security validate-trusted-artifact
+
+validate-gitops-static:
+	@if command -v mise >/dev/null; then \
+		mise exec -- shellcheck scripts/validate-gitops-static.sh \
+			tests/gitops/test-validation.sh; \
+		mise exec -- ./tests/gitops/test-validation.sh; \
+	else \
+		shellcheck scripts/validate-gitops-static.sh \
+			tests/gitops/test-validation.sh; \
+		./tests/gitops/test-validation.sh; \
+	fi
 
 validate-foundation:
 	@if command -v shellcheck >/dev/null; then \
