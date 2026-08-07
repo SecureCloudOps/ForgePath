@@ -1,0 +1,6 @@
+apiVersion: v2
+name: __FORGEPATH_SERVICE_NAME__
+description: Helm chart for __FORGEPATH_SERVICE_NAME__
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

@@ -1,0 +1,7 @@
+site_name: __FORGEPATH_SERVICE_NAME__
+docs_dir: docs
+nav:
+  - Runbook: RUNBOOK.md
+  - Security: SECURITY.md
+plugins:
+  - techdocs-core

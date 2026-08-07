@@ -5,8 +5,8 @@ Developers choose an approved path; the platform generates secure defaults,
 validates every change, and delivers only policy-compliant trusted artifacts
 through GitOps.
 
-This repository currently contains only its foundation. No platform components,
-infrastructure, policies, or application templates are implemented yet.
+The first paved path is `secure-fastapi-service`, a small secure-by-default
+FastAPI service template with local validation and a hardened Helm chart.
 
 ## Documentation
 
@@ -19,4 +19,13 @@ infrastructure, policies, or application templates are implemented yet.
 
 ```sh
 make validate-foundation
+```
+
+## Validate the secure FastAPI paved path
+
+The validation requires Python 3.12, Docker, Helm, jq, and yq. It
+creates only temporary files and a local container image.
+
+```sh
+make validate-secure-fastapi
 ```

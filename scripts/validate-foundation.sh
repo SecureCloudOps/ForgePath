@@ -19,7 +19,6 @@ required_files=(
 
 required_directories=(
   platform
-  templates
   policies
   gitops
   tests
@@ -31,6 +30,11 @@ for file in "${required_files[@]}"; do
     exit 1
   fi
 done
+
+if [[ ! -d templates ]]; then
+  printf 'missing required directory: templates\n' >&2
+  exit 1
+fi
 
 for directory in "${required_directories[@]}"; do
   if [[ ! -d "$directory" ]]; then
