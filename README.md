@@ -90,3 +90,23 @@ values, validates local Kubernetes schemas and OPA policies, checks the exact
 trusted digest, and exercises the GitOps negative suite. See
 [`gitops/README.md`](gitops/README.md) for structure, ownership, promotion, and
 Git-revert rollback semantics.
+
+## Validate GitOps at runtime
+
+The runtime gate creates and deletes only a disposable Kind cluster named
+`forgepath-gitops`. It records and restores the original Kubernetes context,
+rebuilds and verifies the trusted image digest, installs a reviewed and pinned
+Argo CD manifest, and exercises sync, health, self-heal, Git revision changes,
+pruning, and AppProject containment. It uses a temporary local Git remote and
+never pushes an image or Git revision.
+
+Cluster creation and mutation require the explicit approval described in
+`AGENTS.md`. After that approval, run:
+
+```sh
+make validate-gitops-runtime
+```
+
+The command refuses to run if a cluster named `forgepath-gitops` already
+exists. Cleanup deletes only the cluster created by that invocation and restores
+the exact context that was active before creation.

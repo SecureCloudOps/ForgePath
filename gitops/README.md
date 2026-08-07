@@ -95,3 +95,18 @@ Git.
 
 The destination namespace and Argo CD installation are prerequisites owned
 outside this static model. This repository does not apply either resource.
+
+## Disposable runtime validation
+
+After explicit cluster-mutation approval, `make validate-gitops-runtime`
+validates this desired state on a disposable Kind cluster. Because runtime Git
+revision and pruning tests must remain local and unpublished, the harness copies
+the current committed repository into a temporary local Git remote and changes
+only the live test copies of `sourceRepos` and `repoURL` to that remote. The
+committed production source URL and the chart, values, destination, resource
+allowlist, sync policy, and ownership boundaries are unchanged.
+
+The harness pins Kind, the Kubernetes node image digest, Argo CD, the reviewed
+installation manifest checksum, and every installation image digest. It applies
+the final workload only through Argo CD, proves the trusted image digest at
+runtime, and removes the temporary Git data and cluster on exit.
