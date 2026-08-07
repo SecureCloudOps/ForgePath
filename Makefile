@@ -1,4 +1,6 @@
-.PHONY: validate-foundation validate-policy validate-secure-fastapi validate-security
+.PHONY: build-trusted-artifact test-trusted-artifact validate-foundation \
+	validate-policy validate-secure-fastapi validate-security \
+	validate-trusted-artifact
 
 validate-foundation:
 	@if command -v shellcheck >/dev/null; then \
@@ -37,3 +39,26 @@ validate-security: validate-policy
 		shellcheck scripts/validate-secure-fastapi.sh; \
 		./scripts/validate-secure-fastapi.sh; \
 	fi
+
+build-trusted-artifact: validate-security
+	@if command -v mise >/dev/null; then \
+		mise exec -- shellcheck scripts/build-trusted-artifact.sh \
+			scripts/validate-trusted-artifact.sh \
+			tests/trusted-artifact/test-validation.sh; \
+		mise exec -- ./scripts/build-trusted-artifact.sh; \
+	else \
+		shellcheck scripts/build-trusted-artifact.sh \
+			scripts/validate-trusted-artifact.sh \
+			tests/trusted-artifact/test-validation.sh; \
+		./scripts/build-trusted-artifact.sh; \
+	fi
+
+test-trusted-artifact:
+	@if command -v mise >/dev/null; then \
+		mise exec -- ./tests/trusted-artifact/test-validation.sh; \
+	else \
+		./tests/trusted-artifact/test-validation.sh; \
+	fi
+
+validate-trusted-artifact: build-trusted-artifact test-trusted-artifact
+	@printf 'ForgePath trusted artifact workflow validation passed.\n'

@@ -51,3 +51,26 @@ make validate-policy
 
 `make validate-security` depends on this target, so CI and local security
 validation execute the exact same policy checks.
+
+## Build a trusted local artifact
+
+Install the pinned toolchain and start Docker, then run:
+
+```sh
+mise install
+make build-trusted-artifact
+make validate-trusted-artifact
+```
+
+The build entry point first reuses `make validate-security`, then renders and
+builds `secure-fastapi-service` as a local OCI archive. It scans the exact
+archive with Trivy using ForgePath's `HIGH,CRITICAL` demo policy, generates an
+SPDX JSON SBOM with Syft, and records the OCI manifest digest. Cosign signs that
+digest locally with an ephemeral test key and verifies it before the private key
+is deleted. Nothing is uploaded to a registry or transparency service.
+
+Successful evidence is written beneath `.forgepath/trusted-artifact/`, which is
+ignored by Git. `metadata.json` binds the archive, digest, SBOM, scan report,
+signature, source revision, and reproducible source timestamp. The validator
+also exercises rejection of unsigned artifacts, mismatched metadata, missing
+SBOMs, and invalid signatures.

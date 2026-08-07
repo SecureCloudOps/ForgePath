@@ -10,5 +10,8 @@ regex = '''FORGEPATH_SYNTHETIC_SECRET_[A-Z0-9]{20}'''
 keywords = ["FORGEPATH_SYNTHETIC_SECRET_"]
 
 [allowlist]
-description = "Synthetic negative-test fixtures are exercised separately"
-paths = ['''tests/security/fixtures/fake-secret\.txt''']
+description = "Synthetic fixtures and ignored local artifact outputs"
+paths = [
+  '''tests/security/fixtures/fake-secret\.txt''',
+  '''^\.forgepath/''',
+]
