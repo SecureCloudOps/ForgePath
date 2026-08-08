@@ -30,3 +30,6 @@ jobs:
 
       - name: Run local policy and security validation
         run: make validate-security
+
+      - name: Validate the local Backstage paved-path consumer
+        run: make validate-backstage-static

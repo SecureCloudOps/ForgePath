@@ -1,0 +1,11 @@
+{
+  "backstageVersion": "1.53.0",
+  "createApp": {
+    "package": "@backstage/create-app",
+    "version": "0.9.0",
+    "tarball": "https://registry.npmjs.org/@backstage/create-app/-/create-app-0.9.0.tgz",
+    "integrity": "sha512-rCiofh5z27nXG1hMMcw0qc01Ks8A7C6RrJvSiC27ZUghjRKj6+b1R3nOT4T5M42SUzwviRZgZ3TOOyIxEHxVQA=="
+  },
+  "nodeVersion": "22.22.2",
+  "packageManager": "yarn@4.13.0"
+}

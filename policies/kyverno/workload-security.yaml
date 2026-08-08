@@ -1,0 +1,211 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: forgepath-workload-security
+  annotations:
+    policies.kyverno.io/title: ForgePath Workload Security
+    policies.kyverno.io/category: ForgePath Security
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: Pod
+    kyverno.io/kyverno-version: 1.18.2
+    kyverno.io/kubernetes-version: "1.32"
+spec:
+  admission: true
+  background: true
+  failurePolicy: Fail
+  validationFailureAction: Enforce
+  webhookTimeoutSeconds: 10
+  rules:
+    - name: require-run-as-non-root
+      match: &match-pods
+        any:
+          - resources:
+              kinds:
+                - Pod
+      exclude: &exclude-system-pods
+        any:
+          - resources:
+              namespaces:
+                - kube-system
+                - kyverno
+      validate:
+        allowExistingViolations: false
+        message: >-
+          Containers must run as non-root. Set runAsNonRoot=true at Pod scope or
+          on every container, init container, and ephemeral container; UID 0 is forbidden.
+        anyPattern:
+          - spec:
+              securityContext:
+                runAsNonRoot: true
+                =(runAsUser): ">0"
+              =(ephemeralContainers):
+                - =(securityContext):
+                    =(runAsNonRoot): true
+                    =(runAsUser): ">0"
+              =(initContainers):
+                - =(securityContext):
+                    =(runAsNonRoot): true
+                    =(runAsUser): ">0"
+              containers:
+                - =(securityContext):
+                    =(runAsNonRoot): true
+                    =(runAsUser): ">0"
+          - spec:
+              =(ephemeralContainers):
+                - securityContext:
+                    runAsNonRoot: true
+                    =(runAsUser): ">0"
+              =(initContainers):
+                - securityContext:
+                    runAsNonRoot: true
+                    =(runAsUser): ">0"
+              containers:
+                - securityContext:
+                    runAsNonRoot: true
+                    =(runAsUser): ">0"
+
+    - name: forbid-privileged-containers
+      match: *match-pods
+      exclude: *exclude-system-pods
+      validate:
+        allowExistingViolations: false
+        message: Privileged containers are forbidden.
+        pattern:
+          spec:
+            =(ephemeralContainers):
+              - =(securityContext):
+                  =(privileged): false
+            =(initContainers):
+              - =(securityContext):
+                  =(privileged): false
+            containers:
+              - =(securityContext):
+                  =(privileged): false
+
+    - name: require-no-privilege-escalation
+      match: *match-pods
+      exclude: *exclude-system-pods
+      validate:
+        allowExistingViolations: false
+        message: Containers must set allowPrivilegeEscalation=false.
+        pattern:
+          spec:
+            =(ephemeralContainers):
+              - securityContext:
+                  allowPrivilegeEscalation: false
+            =(initContainers):
+              - securityContext:
+                  allowPrivilegeEscalation: false
+            containers:
+              - securityContext:
+                  allowPrivilegeEscalation: false
+
+    - name: require-drop-all-capabilities
+      match: *match-pods
+      exclude: *exclude-system-pods
+      validate:
+        allowExistingViolations: false
+        message: Containers must drop all Linux capabilities with capabilities.drop=["ALL"].
+        foreach:
+          - list: request.object.spec.[ephemeralContainers, initContainers, containers][]
+            deny:
+              conditions:
+                all:
+                  - key: ALL
+                    operator: AnyNotIn
+                    value: "{{ element.securityContext.capabilities.drop[] || `[]` }}"
+
+    - name: require-cpu-memory-requests-limits
+      match: *match-pods
+      exclude: *exclude-system-pods
+      validate:
+        allowExistingViolations: false
+        message: Containers must define CPU and memory requests and limits.
+        pattern:
+          spec:
+            =(ephemeralContainers):
+              - resources:
+                  requests:
+                    cpu: "?*"
+                    memory: "?*"
+                  limits:
+                    cpu: "?*"
+                    memory: "?*"
+            =(initContainers):
+              - resources:
+                  requests:
+                    cpu: "?*"
+                    memory: "?*"
+                  limits:
+                    cpu: "?*"
+                    memory: "?*"
+            containers:
+              - resources:
+                  requests:
+                    cpu: "?*"
+                    memory: "?*"
+                  limits:
+                    cpu: "?*"
+                    memory: "?*"
+
+    - name: require-explicit-image-version
+      match: *match-pods
+      exclude: *exclude-system-pods
+      validate:
+        allowExistingViolations: false
+        message: Images must use an explicit version tag or sha256 digest.
+        foreach:
+          - list: request.object.spec.containers
+            pattern:
+              image: "*:*"
+          - list: request.object.spec.initContainers
+            pattern:
+              image: "*:*"
+          - list: request.object.spec.ephemeralContainers
+            pattern:
+              image: "*:*"
+
+    - name: forbid-mutable-image-tags
+      match: *match-pods
+      exclude: *exclude-system-pods
+      validate:
+        allowExistingViolations: false
+        message: Mutable image tags latest, stable, main, and master are forbidden.
+        foreach:
+          - list: request.object.spec.[ephemeralContainers, initContainers, containers][]
+            deny:
+              conditions:
+                all:
+                  - key: "{{ regex_match('(?i)^.*:(latest|stable|main|master)$', element.image) }}"
+                    operator: Equals
+                    value: true
+
+    - name: disable-workload-service-account-token
+      match: *match-pods
+      exclude: *exclude-system-pods
+      validate:
+        allowExistingViolations: false
+        message: Pod specs must set automountServiceAccountToken=false.
+        pattern:
+          spec:
+            automountServiceAccountToken: false
+
+    - name: forbid-host-network
+      match: *match-pods
+      exclude: *exclude-system-pods
+      validate:
+        allowExistingViolations: false
+        message: hostNetwork is forbidden.
+        pattern:
+          spec:
+            =(hostNetwork): false
+
+    - name: forbid-host-pid
+      match: *match-pods
+      exclude: *exclude-system-pods
+      validate:
+        allowExistingViolations: false
+        message: hostPID is forbidden.
+        pattern:
+          spec:
+            =(hostPID): false

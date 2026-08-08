@@ -8,6 +8,27 @@ through GitOps.
 The first paved path is `secure-fastapi-service`, a small secure-by-default
 FastAPI service template with local validation and a hardened Helm chart.
 
+## Run the local Backstage developer portal
+
+ForgePath includes a pinned Backstage `1.53.0` bootstrap that consumes the
+existing `secure-fastapi-service` renderer. Its single scaffolder template
+generates only beneath `.forgepath/generated/`; it has no publish or remote
+catalog-registration step.
+
+```sh
+mise install
+make validate-backstage-static
+cd platform/backstage
+corepack yarn start
+```
+
+Generated services include catalog owner/system metadata and TechDocs. The
+local portal can optionally read Kubernetes workload and Argo CD `Application`
+status through a loopback kubectl proxy using an independently provisioned
+read-only identity. Pod deletion and direct Kubernetes proxy access are disabled
+in Backstage. See [`platform/backstage/README.md`](platform/backstage/README.md)
+for the exact local-only boundary and operation instructions.
+
 ## Documentation
 
 - [Architecture](docs/ARCHITECTURE.md)
@@ -51,6 +72,26 @@ make validate-policy
 
 `make validate-security` depends on this target, so CI and local security
 validation execute the exact same policy checks.
+
+## Validate Kyverno admission policy statically
+
+Kyverno complements, and does not replace, the OPA/Conftest layer. The pinned
+Kyverno CLI evaluates validation-only, fail-closed admission policies against
+the secure paved-path rendering and sixteen synthetic insecure fixtures without
+contacting a Kubernetes API:
+
+```sh
+make validate-kyverno-static
+```
+
+The enforcement responsibilities are deliberately separate:
+
+- **OPA/Conftest:** pre-deployment CI policy validation.
+- **Argo CD:** desired-state reconciliation.
+- **Kyverno:** runtime Kubernetes admission enforcement.
+
+Backstage is the developer experience over these capabilities. It does not
+replace any validation, reconciliation, or admission layer.
 
 ## Build a trusted local artifact
 
@@ -110,3 +151,21 @@ make validate-gitops-runtime
 The command refuses to run if a cluster named `forgepath-gitops` already
 exists. Cleanup deletes only the cluster created by that invocation and restores
 the exact context that was active before creation.
+
+## Validate Kyverno at runtime
+
+After explicit approval for the cluster and Kubernetes API mutations required
+by `AGENTS.md`, run:
+
+```sh
+make validate-kyverno-runtime
+```
+
+This proof does not install or depend on Argo CD. It creates only the disposable
+Kind cluster `forgepath-kyverno`, installs the checksum-verified Kyverno
+`v1.18.2` manifest with every controller image replaced by a pinned digest,
+installs the validation policies, and exercises admission directly through the
+Kubernetes API. It proves the compliant service is admitted, required negative
+fixtures are denied, and denial remains active after the admission controller
+restarts. Cleanup deletes only that disposable cluster, restores the exact
+original Kubernetes context, and removes temporary files.

@@ -1,0 +1,86 @@
+app:
+  title: ForgePath
+  baseUrl: http://localhost:3000
+  packages: all
+  routes:
+    bindings:
+      scaffolder.registerComponent: false
+  extensions:
+    - page:catalog:
+        config:
+          path: /
+
+organization:
+  name: ForgePath
+
+backend:
+  baseUrl: http://localhost:7007
+  listen:
+    host: 127.0.0.1
+    port: 7007
+  cors:
+    origin: http://localhost:3000
+    methods: [GET, HEAD, POST]
+    credentials: true
+  database:
+    client: better-sqlite3
+    connection: ':memory:'
+
+auth:
+  providers:
+    guest: {}
+
+permission:
+  enabled: true
+
+catalog:
+  rules:
+    - allow: [Component, Group, System, Template]
+  locations:
+    - type: file
+      target: ../../catalog/entities.yaml
+      rules:
+        - allow: [Component, Group, System]
+    - type: file
+      target: ../../../../templates/secure-fastapi-service/template.yaml
+      rules:
+        - allow: [Template]
+
+scaffolder:
+  defaultAuthor:
+    name: ForgePath
+    email: forgepath@invalid.example
+
+forgepath:
+  repositoryRoot: ../..
+  generationRoot: ../../.forgepath/generated
+  pythonExecutable: python3.12
+
+techdocs:
+  builder: local
+  generator:
+    runIn: local
+  publisher:
+    type: local
+
+kubernetes:
+  frontend:
+    podDelete:
+      enabled: false
+  serviceLocatorMethod:
+    type: multiTenant
+  clusterLocatorMethods:
+    - type: localKubectlProxy
+  objectTypes:
+    - deployments
+    - pods
+    - replicasets
+    - services
+    - statefulsets
+    - daemonsets
+    - jobs
+    - cronjobs
+  customResources:
+    - group: argoproj.io
+      apiVersion: v1alpha1
+      plural: applications

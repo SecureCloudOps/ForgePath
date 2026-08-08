@@ -5,7 +5,10 @@ metadata:
   description: __FORGEPATH_SERVICE_DESCRIPTION__
   annotations:
     backstage.io/techdocs-ref: dir:.
+    backstage.io/kubernetes-label-selector: app.kubernetes.io/name=__FORGEPATH_SERVICE_NAME__
+    backstage.io/kubernetes-namespace: __FORGEPATH_KUBERNETES_NAMESPACE__
 spec:
   type: service
   lifecycle: experimental
   owner: __FORGEPATH_OWNER__
+  system: forgepath

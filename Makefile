@@ -1,6 +1,34 @@
-.PHONY: build-trusted-artifact test-trusted-artifact validate-foundation \
+.PHONY: build-trusted-artifact test-trusted-artifact validate-backstage-static validate-foundation \
 	validate-gitops-runtime validate-gitops-static validate-policy validate-secure-fastapi \
-	validate-security validate-trusted-artifact
+	validate-kyverno-runtime validate-kyverno-static validate-security \
+	validate-trusted-artifact
+
+validate-backstage-static:
+	@if command -v mise >/dev/null; then \
+		mise exec -- shellcheck scripts/validate-backstage-static.sh; \
+		mise exec -- ./scripts/validate-backstage-static.sh; \
+	else \
+		shellcheck scripts/validate-backstage-static.sh; \
+		./scripts/validate-backstage-static.sh; \
+	fi
+
+validate-kyverno-runtime: validate-kyverno-static
+	@if command -v mise >/dev/null; then \
+		mise exec -- shellcheck scripts/validate-kyverno-runtime.sh; \
+		mise exec -- ./scripts/validate-kyverno-runtime.sh; \
+	else \
+		shellcheck scripts/validate-kyverno-runtime.sh; \
+		./scripts/validate-kyverno-runtime.sh; \
+	fi
+
+validate-kyverno-static:
+	@if command -v mise >/dev/null; then \
+		mise exec -- shellcheck scripts/validate-kyverno-static.sh; \
+		mise exec -- ./scripts/validate-kyverno-static.sh; \
+	else \
+		shellcheck scripts/validate-kyverno-static.sh; \
+		./scripts/validate-kyverno-static.sh; \
+	fi
 
 validate-gitops-runtime: validate-gitops-static
 	@if command -v mise >/dev/null; then \
@@ -51,7 +79,7 @@ validate-policy:
 		./scripts/validate-policy.sh; \
 	fi
 
-validate-security: validate-policy
+validate-security: validate-policy validate-kyverno-static
 	@if command -v mise >/dev/null; then \
 		mise exec -- shellcheck scripts/validate-secure-fastapi.sh; \
 		mise exec -- ./scripts/validate-secure-fastapi.sh; \

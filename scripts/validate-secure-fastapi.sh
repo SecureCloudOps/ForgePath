@@ -193,14 +193,24 @@ jq -e '
   .spec.template.spec.containers[0].readinessProbe.httpGet.path == "/health/ready"
 ' <<<"$deployment_json" >/dev/null
 
-jq -e '.metadata.name and .spec.owner and .spec.type == "service" and .metadata.annotations["backstage.io/techdocs-ref"] == "dir:."' \
+jq -e '
+  .metadata.name == "example-fastapi" and
+  .spec.owner == "group:default/platform" and
+  .spec.type == "service" and
+  .spec.system == "forgepath" and
+  .metadata.annotations["backstage.io/techdocs-ref"] == "dir:." and
+  .metadata.annotations["backstage.io/kubernetes-label-selector"] ==
+    "app.kubernetes.io/name=example-fastapi" and
+  .metadata.annotations["backstage.io/kubernetes-namespace"] ==
+    "example-fastapi-local"
+' \
   < <(yq -o=json "$rendered/catalog-info.yaml") >/dev/null
 yq -e '.site_name and .docs_dir == "docs" and .plugins[] == "techdocs-core"' \
   "$rendered/mkdocs.yml" >/dev/null
 jq -e '.type == "object" and .properties.image.properties.digest.pattern == "^sha256:[a-f0-9]{64}$"' \
   "$rendered/chart/values.schema.json" >/dev/null
 
-for document in README.md docs/RUNBOOK.md docs/SECURITY.md catalog-info.yaml mkdocs.yml; do
+for document in README.md docs/index.md docs/RUNBOOK.md docs/SECURITY.md catalog-info.yaml mkdocs.yml; do
   test -s "$rendered/$document"
 done
 

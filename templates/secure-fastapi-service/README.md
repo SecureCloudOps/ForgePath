@@ -10,11 +10,17 @@ minimal non-root container, and a hardened Helm chart.
 python3 templates/secure-fastapi-service/render.py \
   --output /tmp/my-service \
   --service-name my-service \
-  --owner group:default/platform
+  --owner group:default/platform \
+  --kubernetes-namespace my-service-local
 ```
 
 The output directory must be empty. Rendering is deterministic for the same
 arguments and does not require network access or a template engine.
+
+The same renderer is the only generation implementation used by the local
+Backstage template. Backstage confines its no-publish output to
+`.forgepath/generated/<service-name>` and adds no alternate skeleton or delivery
+path.
 
 ## Validate
 

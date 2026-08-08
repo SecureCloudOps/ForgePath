@@ -3,6 +3,9 @@ kind: Application
 metadata:
   name: secure-fastapi-service-local
   namespace: argocd
+  labels:
+    app.kubernetes.io/name: secure-fastapi-service
+    app.kubernetes.io/part-of: forgepath
 spec:
   project: forgepath-local
   source:

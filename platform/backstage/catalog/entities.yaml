@@ -1,0 +1,33 @@
+apiVersion: backstage.io/v1alpha1
+kind: Group
+metadata:
+  name: platform
+  namespace: default
+  description: ForgePath platform owners
+spec:
+  type: team
+  profile:
+    displayName: Platform
+  children: []
+---
+apiVersion: backstage.io/v1alpha1
+kind: System
+metadata:
+  name: forgepath
+  description: Secure paved paths and their delivery controls
+spec:
+  owner: group:default/platform
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: secure-fastapi-service
+  description: The reference ForgePath secure FastAPI paved-path workload
+  annotations:
+    backstage.io/kubernetes-label-selector: app.kubernetes.io/name=secure-fastapi-service
+    backstage.io/kubernetes-namespace: secure-fastapi-service-local
+spec:
+  type: service
+  lifecycle: experimental
+  owner: group:default/platform
+  system: forgepath
