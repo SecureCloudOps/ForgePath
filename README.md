@@ -1,171 +1,88 @@
 # ForgePath
 
-ForgePath is a small portfolio project for demonstrating secure paved paths.
-Developers choose an approved path; the platform generates secure defaults,
-validates every change, and delivers only policy-compliant trusted artifacts
-through GitOps.
+ForgePath is a local portfolio implementation of one secure paved path. A
+developer generates `secure-fastapi-service`; ForgePath validates it, builds and
+signs an immutable trusted artifact, promotes its digest through Git, reconciles
+it with Argo CD, enforces admission with Kyverno, and exposes read-only status
+in Backstage.
 
-The first paved path is `secure-fastapi-service`, a small secure-by-default
-FastAPI service template with local validation and a hardened Helm chart.
+```text
+Backstage -> secure-fastapi-service -> Catalog + TechDocs
+          -> Kubernetes workload status -> Argo CD Application status
+```
 
-## Run the local Backstage developer portal
+The v1 scope is deliberately narrow: one template, one service, one local
+environment, one failure scenario, one drift scenario, and one admission
+rejection. Crossplane, AI, more templates, and multi-cloud support are future
+work.
 
-ForgePath includes a pinned Backstage `1.53.0` bootstrap that consumes the
-existing `secure-fastapi-service` renderer. Its single scaffolder template
-generates only beneath `.forgepath/generated/`; it has no publish or remote
-catalog-registration step.
+## Quick start
+
+Install the pinned toolchain and start Docker:
 
 ```sh
 mise install
-make validate-backstage-static
+make validate-v1-static
+```
+
+Run the local portal:
+
+```sh
 cd platform/backstage
 corepack yarn start
 ```
 
-Generated services include catalog owner/system metadata and TechDocs. The
-local portal can optionally read Kubernetes workload and Argo CD `Application`
-status through a loopback kubectl proxy using an independently provisioned
-read-only identity. Pod deletion and direct Kubernetes proxy access are disabled
-in Backstage. See [`platform/backstage/README.md`](platform/backstage/README.md)
-for the exact local-only boundary and operation instructions.
+Choose **Create → Secure FastAPI service**. Output is confined to
+`.forgepath/generated/`; Backstage cannot publish it or register it remotely.
+
+## What the gates prove
+
+| Gate | Command | Evidence |
+| --- | --- | --- |
+| Repository foundation | `make validate-foundation` | Required structure, documentation, architecture stages, and shell safety |
+| Paved path and security | `make validate-security` | Tests, scans, schemas, Helm, OPA, and Kyverno CLI negative fixtures |
+| Trusted artifact | `make validate-trusted-artifact` | OCI archive, Trivy report, SPDX SBOM, digest, and locally verified ephemeral signature |
+| Backstage | `make validate-backstage-static` | Pinned app, catalog, TechDocs contract, renderer confinement, and permissions |
+| GitOps | `make validate-gitops-static` | Restricted AppProject/Application, trusted digest handoff, render, schema, and policy checks |
+| Backstage + Argo runtime | `make validate-backstage-runtime` | Disposable Kind deployment, reconciliation, read-only Backstage workload and Application status, and RBAC denials |
+| Kyverno runtime | `make validate-kyverno-runtime` | Compliant admission and unsafe Pod rejection through the Kubernetes API |
+
+Runtime gates create, mutate, and delete only named disposable Kind clusters.
+They require explicit approval under `AGENTS.md`, refuse pre-existing target
+clusters, verify context before mutation, restore the original context, and
+clean up on exit.
+
+## Read-only runtime identity
+
+`backstage-runtime-reader` receives only `get`, `list`, and `watch` for selected
+workload resources and the matching Argo CD `Application`. The runtime gate
+explicitly proves denial of:
+
+- Secrets and credential/token access;
+- Pod deletion and exec;
+- workload creation, update, patch, and deletion;
+- Argo CD Application update/patch (including sync); and
+- Backstage's raw Kubernetes proxy permission.
+
+Backstage holds no Argo CD API token and exposes no sync control.
+
+## Final validation
+
+After approval for the disposable cluster mutations:
+
+```sh
+make validate-v1
+```
+
+That is the v1 release gate. Stop adding features once it passes and the demo
+screenshots are recorded.
 
 ## Documentation
 
 - [Architecture](docs/ARCHITECTURE.md)
+- [End-to-end demo and screenshot checklist](docs/DEMO.md)
 - [Threat model](docs/THREAT_MODEL.md)
+- [GitOps design and rollback](gitops/README.md)
+- [Backstage boundary](platform/backstage/README.md)
 - [Roadmap](docs/ROADMAP.md)
-- [Architecture decision records](docs/adr/README.md)
-
-## Validate the foundation
-
-```sh
-make validate-foundation
-```
-
-## Validate the secure FastAPI paved path
-
-Install the pinned validation toolchain with `mise install`. The validation also
-requires a running Docker engine. It creates only temporary files and a local
-container image.
-
-```sh
-mise install
-make validate-security
-```
-
-This single fail-closed entry point runs formatting, linting, type checking,
-unit tests, secret scanning, SAST, dependency and container vulnerability
-scanning, Dockerfile and Kubernetes misconfiguration scanning, Kubeconform,
-and Helm lint/render checks. Synthetic negative fixtures prove that the scanners
-reject secrets, insecure container and Kubernetes configurations, schema-invalid
-manifests, and overprivileged RBAC.
-
-## Validate platform policy
-
-ForgePath's Kubernetes rules are centralized as OPA/Rego in `policies/` and are
-evaluated by Conftest against Helm-rendered manifests. The standalone policy gate
-also exercises a synthetic negative fixture for every enforced rule:
-
-```sh
-make validate-policy
-```
-
-`make validate-security` depends on this target, so CI and local security
-validation execute the exact same policy checks.
-
-## Validate Kyverno admission policy statically
-
-Kyverno complements, and does not replace, the OPA/Conftest layer. The pinned
-Kyverno CLI evaluates validation-only, fail-closed admission policies against
-the secure paved-path rendering and sixteen synthetic insecure fixtures without
-contacting a Kubernetes API:
-
-```sh
-make validate-kyverno-static
-```
-
-The enforcement responsibilities are deliberately separate:
-
-- **OPA/Conftest:** pre-deployment CI policy validation.
-- **Argo CD:** desired-state reconciliation.
-- **Kyverno:** runtime Kubernetes admission enforcement.
-
-Backstage is the developer experience over these capabilities. It does not
-replace any validation, reconciliation, or admission layer.
-
-## Build a trusted local artifact
-
-Install the pinned toolchain and start Docker, then run:
-
-```sh
-mise install
-make build-trusted-artifact
-make validate-trusted-artifact
-```
-
-The build entry point first reuses `make validate-security`, then renders and
-builds `secure-fastapi-service` as a local OCI archive. It scans the exact
-archive with Trivy using ForgePath's `HIGH,CRITICAL` demo policy, generates an
-SPDX JSON SBOM with Syft, and records the OCI manifest digest. Cosign signs that
-digest locally with an ephemeral test key and verifies it before the private key
-is deleted. Nothing is uploaded to a registry or transparency service.
-
-Successful evidence is written beneath `.forgepath/trusted-artifact/`, which is
-ignored by Git. `metadata.json` binds the archive, digest, SBOM, scan report,
-signature, source revision, and reproducible source timestamp. The validator
-also exercises rejection of unsigned artifacts, mismatched metadata, missing
-SBOMs, and invalid signatures.
-
-## Validate static GitOps desired state
-
-The local desired state promotes only an already trusted
-`secure-fastapi-service` image digest. Validation is offline and does not create
-a cluster, install Argo CD, or contact a Kubernetes API:
-
-```sh
-make validate-gitops-static
-```
-
-This renders the application-owned Helm chart with `gitops/` environment
-values, validates local Kubernetes schemas and OPA policies, checks the exact
-trusted digest, and exercises the GitOps negative suite. See
-[`gitops/README.md`](gitops/README.md) for structure, ownership, promotion, and
-Git-revert rollback semantics.
-
-## Validate GitOps at runtime
-
-The runtime gate creates and deletes only a disposable Kind cluster named
-`forgepath-gitops`. It records and restores the original Kubernetes context,
-rebuilds and verifies the trusted image digest, installs a reviewed and pinned
-Argo CD manifest, and exercises sync, health, self-heal, Git revision changes,
-pruning, and AppProject containment. It uses a temporary local Git remote and
-never pushes an image or Git revision.
-
-Cluster creation and mutation require the explicit approval described in
-`AGENTS.md`. After that approval, run:
-
-```sh
-make validate-gitops-runtime
-```
-
-The command refuses to run if a cluster named `forgepath-gitops` already
-exists. Cleanup deletes only the cluster created by that invocation and restores
-the exact context that was active before creation.
-
-## Validate Kyverno at runtime
-
-After explicit approval for the cluster and Kubernetes API mutations required
-by `AGENTS.md`, run:
-
-```sh
-make validate-kyverno-runtime
-```
-
-This proof does not install or depend on Argo CD. It creates only the disposable
-Kind cluster `forgepath-kyverno`, installs the checksum-verified Kyverno
-`v1.18.2` manifest with every controller image replaced by a pinned digest,
-installs the validation policies, and exercises admission directly through the
-Kubernetes API. It proves the compliant service is admitted, required negative
-fixtures are denied, and denial remains active after the admission controller
-restarts. Cleanup deletes only that disposable cluster, restores the exact
-original Kubernetes context, and removes temporary files.
+- [ADRs](docs/adr/README.md)

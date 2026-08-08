@@ -35,12 +35,16 @@ permission:
 
 catalog:
   rules:
-    - allow: [Component, Group, System, Template]
+    - allow: [Component, Group, Resource, System, Template]
   locations:
     - type: file
       target: ../../catalog/entities.yaml
       rules:
-        - allow: [Component, Group, System]
+        - allow: [Group, Resource, System]
+    - type: file
+      target: ../../../../services/secure-fastapi-service/catalog-info.yaml
+      rules:
+        - allow: [Component]
     - type: file
       target: ../../../../templates/secure-fastapi-service/template.yaml
       rules:

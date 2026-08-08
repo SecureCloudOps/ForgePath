@@ -11,6 +11,7 @@ required_files=(
   mise.toml
   Makefile
   docs/ARCHITECTURE.md
+  docs/DEMO.md
   docs/THREAT_MODEL.md
   docs/ROADMAP.md
   docs/adr/README.md
@@ -22,10 +23,6 @@ required_directories=(
   policies
   gitops
   tests
-)
-
-empty_directories=(
-  platform
 )
 
 for file in "${required_files[@]}"; do
@@ -47,20 +44,13 @@ for directory in "${required_directories[@]}"; do
   fi
 done
 
-for directory in "${empty_directories[@]}"; do
-  if find "$directory" -mindepth 1 -print -quit | grep -q .; then
-    printf 'foundation directory must be empty: %s\n' "$directory" >&2
-    exit 1
-  fi
-done
-
 if [[ ! -x scripts/validate-foundation.sh ]]; then
   printf 'validation script must be executable\n' >&2
   exit 1
 fi
 
-for document in README.md docs/ARCHITECTURE.md docs/THREAT_MODEL.md \
-  docs/ROADMAP.md docs/adr/README.md; do
+for document in README.md docs/ARCHITECTURE.md docs/DEMO.md \
+  docs/THREAT_MODEL.md docs/ROADMAP.md docs/adr/README.md; do
   if ! grep -Fq 'ForgePath' "$document"; then
     printf 'documentation does not identify ForgePath: %s\n' "$document" >&2
     exit 1
@@ -72,27 +62,24 @@ if ! grep -Fq 'make validate-foundation' README.md; then
   exit 1
 fi
 
-expected_flow=(
-  'paved path'
-  '-> generated service'
-  '-> CI validation'
-  '-> policy enforcement'
-  '-> build / scan / SBOM / sign'
-  '-> trusted artifact'
-  '-> Git desired state'
-  '-> Argo CD'
-  '-> Kyverno'
-  '-> Kubernetes'
+architecture_stages=(
+  'Backstage'
+  'secure-fastapi-service'
+  'Repository-owned renderer'
+  'OPA / Conftest policy gate'
+  'OCI image + SBOM + scan report'
+  'Git desired state'
+  'Argo CD Application'
+  'Kyverno admission'
+  'Kubernetes workload'
+  'backstage-runtime-reader'
 )
 
-previous_line=0
-for stage in "${expected_flow[@]}"; do
-  line="$(grep -nF -- "$stage" docs/ARCHITECTURE.md | head -n 1 | cut -d: -f1)"
-  if [[ -z "$line" || "$line" -le "$previous_line" ]]; then
-    printf 'architecture flow is missing or out of order at: %s\n' "$stage" >&2
+for stage in "${architecture_stages[@]}"; do
+  if ! grep -Fq -- "$stage" docs/ARCHITECTURE.md; then
+    printf 'architecture flow is missing stage: %s\n' "$stage" >&2
     exit 1
   fi
-  previous_line="$line"
 done
 
 printf 'ForgePath foundation validation passed.\n'

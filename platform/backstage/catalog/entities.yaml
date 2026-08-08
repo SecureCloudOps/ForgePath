@@ -19,15 +19,16 @@ spec:
   owner: group:default/platform
 ---
 apiVersion: backstage.io/v1alpha1
-kind: Component
+kind: Resource
 metadata:
-  name: secure-fastapi-service
-  description: The reference ForgePath secure FastAPI paved-path workload
+  name: secure-fastapi-service-argocd
+  description: Read-only Argo CD delivery status for the reference service
   annotations:
     backstage.io/kubernetes-label-selector: app.kubernetes.io/name=secure-fastapi-service
-    backstage.io/kubernetes-namespace: secure-fastapi-service-local
+    backstage.io/kubernetes-namespace: argocd
 spec:
-  type: service
-  lifecycle: experimental
+  type: argocd-application
   owner: group:default/platform
   system: forgepath
+  dependencyOf:
+    - component:default/secure-fastapi-service

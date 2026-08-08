@@ -109,4 +109,6 @@ allowlist, sync policy, and ownership boundaries are unchanged.
 The harness pins Kind, the Kubernetes node image digest, Argo CD, the reviewed
 installation manifest checksum, and every installation image digest. It applies
 the final workload only through Argo CD, proves the trusted image digest at
-runtime, and removes the temporary Git data and cluster on exit.
+runtime, then proves Backstage can read workload and Application status through
+a namespaced `get`/`list`/`watch` identity. It removes the temporary Git data,
+Backstage/proxy processes, and cluster on exit.

@@ -50,21 +50,28 @@ and the same Helm chart and application source as the command-line paved path.
 
 ## Read-only Kubernetes and Argo CD visibility
 
-The catalog annotation selects workloads with
+The service catalog Component selects workloads with
 `app.kubernetes.io/name=<service-name>` in the declared namespace. The
 Kubernetes plugin is limited to workload resource types, disables pod deletion,
 and the permission policy denies `kubernetes.proxy`.
+
+The reference service depends on a related catalog Resource that uses the same
+label selector in the `argocd` namespace. This lets Backstage read the matching
+Application without granting cluster-wide list access; Backstage's Kubernetes
+annotation accepts only one namespace per entity.
 
 For an optional local proof, first select a Kubernetes identity that has only
 `get`, `list`, and `watch` access to the intended workload resources and Argo
 CD Applications. Then start a loopback-only kubectl proxy separately:
 
 ```sh
-kubectl proxy --port=8001 --accept-hosts='^localhost$'
+kubectl proxy --address=127.0.0.1 --port=8001 \
+  --accept-hosts='^localhost$,^127\.0\.0\.1$'
 ```
 
 Backstage can display Argo CD health and sync status by reading the existing
-`argoproj.io/v1alpha1` `Application` custom resource selected by the same label.
+`argoproj.io/v1alpha1` `Application` custom resource through that related
+Resource.
 There is no Argo CD plugin, sync control, token, or alternate reconciliation
 implementation in this bootstrap. Do not use a privileged kubeconfig: the
 local proxy acts with the caller's Kubernetes credentials.
@@ -83,3 +90,15 @@ The target validates pins and configuration, installs the locked dependencies
 immutably, type-checks, lints, tests, and builds the app, then renders a local
 service and compares it with the existing paved-path contract. It does not
 contact a Kubernetes API or publish anything.
+
+After explicit approval for disposable cluster creation and Kubernetes API
+mutation, the executable runtime proof is:
+
+```sh
+make validate-backstage-runtime
+```
+
+The harness forces the proxy to impersonate a dedicated service account and
+proves Backstage Catalog/TechDocs metadata, ready workload status, a Synced and
+Healthy Application, and denial of Secrets, delete, exec, mutation, sync,
+credential access, and Backstage's raw Kubernetes proxy permission.

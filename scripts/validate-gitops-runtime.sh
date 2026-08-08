@@ -10,6 +10,10 @@ kind_context="kind-$cluster_name"
 argocd_namespace='argocd'
 workload_namespace='secure-fastapi-service-local'
 application_name='secure-fastapi-service-local'
+visibility_namespace='forgepath-backstage-visibility'
+visibility_service_account='backstage-runtime-reader'
+backstage_runtime_port='17007'
+backstage_frontend_port='13000'
 
 kind_version='v0.32.0'
 kubernetes_version='v1.32.11'
@@ -27,6 +31,8 @@ metadata="$artifact_directory/metadata.json"
 runtime_directory=''
 original_context=''
 cluster_created=false
+proxy_pid=''
+backstage_pid=''
 
 log() {
   printf '[forgepath-gitops-runtime] %s\n' "$*"
@@ -61,6 +67,28 @@ cleanup() {
   trap - EXIT
   trap '' INT TERM
 
+  if [[ -n "$backstage_pid" ]]; then
+    kill "$backstage_pid" 2>/dev/null || true
+    wait "$backstage_pid" 2>/dev/null || true
+  fi
+  # The Backstage CLI supervises its backend child. The runtime uses a
+  # dedicated port, so an exact listener lookup safely catches that child
+  # without touching any pre-existing developer portal process.
+  backstage_listener="$(lsof -tiTCP:"$backstage_runtime_port" \
+    -sTCP:LISTEN 2>/dev/null || true)"
+  if [[ -n "$backstage_listener" ]]; then
+    kill "$backstage_listener" 2>/dev/null || true
+  fi
+  backstage_frontend_listener="$(lsof -tiTCP:"$backstage_frontend_port" \
+    -sTCP:LISTEN 2>/dev/null || true)"
+  if [[ -n "$backstage_frontend_listener" ]]; then
+    kill "$backstage_frontend_listener" 2>/dev/null || true
+  fi
+  if [[ -n "$proxy_pid" ]]; then
+    kill "$proxy_pid" 2>/dev/null || true
+    wait "$proxy_pid" 2>/dev/null || true
+  fi
+
   if [[ "$cluster_created" == 'true' ]]; then
     log "deleting only Kind cluster $cluster_name"
     kind delete cluster --name "$cluster_name" >/dev/null || exit_code=1
@@ -85,6 +113,42 @@ cleanup() {
   exit "$exit_code"
 }
 trap cleanup EXIT INT TERM
+
+wait_for_http_process() {
+  local pid="$1"
+  local url="$2"
+  local name="$3"
+  local deadline=$((SECONDS + 180))
+
+  while ((SECONDS < deadline)); do
+    kill -0 "$pid" 2>/dev/null || {
+      [[ -s "$runtime_directory/$name.log" ]] &&
+        sed -n '1,200p' "$runtime_directory/$name.log" >&2
+      fail "$name exited before becoming available"
+    }
+    if curl -fsS -o /dev/null "$url"; then
+      return 0
+    fi
+    sleep 2
+  done
+  fail "$name did not become available at $url"
+}
+
+assert_subject_access() {
+  local expected="$1"
+  local verb="$2"
+  local resource="$3"
+  local namespace="$4"
+  local subject="$5"
+  local actual
+
+  # `kubectl auth can-i` intentionally exits 1 when the answer is "no". Keep
+  # that answer as evidence instead of letting fail-fast abort a denial test.
+  actual="$(kube auth can-i "$verb" "$resource" --namespace "$namespace" \
+    --as "$subject" || true)"
+  [[ "$actual" == "$expected" ]] ||
+    fail "expected $subject can-i $verb $resource in $namespace to be $expected, got $actual"
+}
 
 wait_for_application() {
   local expected_revision="$1"
@@ -167,7 +231,7 @@ wait_for_rejection() {
 }
 
 python_bin="${PYTHON_BIN:-python3.12}"
-for tool in curl docker git helm jq kind kubectl "$python_bin" tar yq; do
+for tool in corepack curl docker git helm jq kind kubectl lsof node "$python_bin" tar yq; do
   command -v "$tool" >/dev/null || fail "required runtime tool not found: $tool"
 done
 
@@ -495,12 +559,286 @@ kube -n "$argocd_namespace" delete application \
   containment-unauthorized-source containment-unauthorized-destination \
   containment-secret containment-cluster-resource --wait=true >/dev/null
 
+log 'installing the dedicated Backstage read-only runtime identity'
+require_target_context
+kube create namespace "$visibility_namespace" >/dev/null
+cat <<EOF | kube apply -f - >/dev/null
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: $visibility_service_account
+  namespace: $visibility_namespace
+automountServiceAccountToken: false
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: backstage-workload-reader
+  namespace: $workload_namespace
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "services"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets", "statefulsets", "daemonsets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["batch"]
+    resources: ["jobs", "cronjobs"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: backstage-workload-reader
+  namespace: $workload_namespace
+subjects:
+  - kind: ServiceAccount
+    name: $visibility_service_account
+    namespace: $visibility_namespace
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: backstage-workload-reader
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: backstage-application-reader
+  namespace: $argocd_namespace
+rules:
+  - apiGroups: ["argoproj.io"]
+    resources: ["applications"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: backstage-application-reader
+  namespace: $argocd_namespace
+subjects:
+  - kind: ServiceAccount
+    name: $visibility_service_account
+    namespace: $visibility_namespace
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: backstage-application-reader
+EOF
+
+readonly_subject="system:serviceaccount:$visibility_namespace:$visibility_service_account"
+for verb in get list watch; do
+  assert_subject_access yes "$verb" deployments "$workload_namespace" "$readonly_subject"
+  assert_subject_access yes "$verb" pods "$workload_namespace" "$readonly_subject"
+  assert_subject_access yes "$verb" applications.argoproj.io "$argocd_namespace" "$readonly_subject"
+done
+for denied_access in \
+  'get secrets' \
+  'list secrets' \
+  'watch secrets' \
+  'delete pods' \
+  'create pods/exec' \
+  'create deployments' \
+  'update deployments' \
+  'patch deployments' \
+  'delete deployments' \
+  'create serviceaccounts/token' \
+  'update applications.argoproj.io' \
+  'patch applications.argoproj.io'; do
+  read -r verb resource <<<"$denied_access"
+  case "$resource" in
+    applications.argoproj.io)
+      denied_namespace="$argocd_namespace"
+      ;;
+    *)
+      denied_namespace="$workload_namespace"
+      ;;
+  esac
+  assert_subject_access no "$verb" "$resource" "$denied_namespace" "$readonly_subject"
+done
+
+log 'starting a loopback-only kubectl proxy that always impersonates the read-only identity'
+kube --as "$readonly_subject" proxy --address=127.0.0.1 --port=8001 \
+  --accept-hosts='^localhost$,^127\.0\.0\.1$' \
+  >"$runtime_directory/kubectl-proxy.log" 2>&1 &
+proxy_pid=$!
+wait_for_http_process "$proxy_pid" 'http://localhost:8001/version' 'kubectl-proxy'
+
+proxy_deployment_status="$(curl -sS -o "$runtime_directory/proxy-deployment.json" \
+  -w '%{http_code}' \
+  "http://localhost:8001/apis/apps/v1/namespaces/$workload_namespace/deployments/$deployment")"
+[[ "$proxy_deployment_status" == '200' ]] ||
+  fail "read-only proxy could not get the demo Deployment: HTTP $proxy_deployment_status"
+proxy_secret_status="$(curl -sS -o /dev/null -w '%{http_code}' \
+  "http://localhost:8001/api/v1/namespaces/$workload_namespace/secrets")"
+[[ "$proxy_secret_status" == '403' ]] ||
+  fail "read-only proxy did not deny Secret access: HTTP $proxy_secret_status"
+proxy_delete_status="$(curl -sS -X DELETE -o /dev/null -w '%{http_code}' \
+  "http://localhost:8001/api/v1/namespaces/$workload_namespace/pods/$pod")"
+[[ "$proxy_delete_status" == '403' ]] ||
+  fail "read-only proxy did not deny Pod deletion: HTTP $proxy_delete_status"
+
+log 'starting the Backstage backend and proving Catalog, TechDocs, workload, and Argo CD visibility'
+cat >"$runtime_directory/backstage-runtime.yaml" <<EOF
+app:
+  baseUrl: http://localhost:$backstage_frontend_port
+backend:
+  baseUrl: http://localhost:$backstage_runtime_port
+  listen:
+    host: 127.0.0.1
+    port: $backstage_runtime_port
+  cors:
+    origin: http://localhost:$backstage_frontend_port
+EOF
+(
+  cd "$repository_root/platform/backstage"
+  exec env NODE_ENV=development corepack yarn start \
+    --config "$repository_root/platform/backstage/app-config.yaml" \
+    --config "$runtime_directory/backstage-runtime.yaml"
+) >"$runtime_directory/backstage.log" 2>&1 &
+backstage_pid=$!
+backstage_url="http://localhost:$backstage_runtime_port"
+wait_for_http_process "$backstage_pid" \
+  "$backstage_url/api/auth/guest/refresh" 'backstage'
+
+auth_response="$(curl -fsS "$backstage_url/api/auth/guest/refresh")"
+backstage_token="$(jq -er '.backstageIdentity.token' <<<"$auth_response")"
+auth_header="Authorization: Bearer $backstage_token"
+
+catalog_deadline=$((SECONDS + 120))
+catalog_entity=''
+argo_catalog_entity=''
+while ((SECONDS < catalog_deadline)); do
+  catalog_entity="$(curl -fsS -H "$auth_header" \
+    "$backstage_url/api/catalog/entities/by-name/component/default/secure-fastapi-service" \
+    2>/dev/null || true)"
+  argo_catalog_entity="$(curl -fsS -H "$auth_header" \
+    "$backstage_url/api/catalog/entities/by-name/resource/default/secure-fastapi-service-argocd" \
+    2>/dev/null || true)"
+  if [[ -n "$catalog_entity" && -n "$argo_catalog_entity" ]]; then
+    break
+  fi
+  sleep 2
+done
+if [[ -z "$catalog_entity" || -z "$argo_catalog_entity" ]]; then
+  sed -n '1,240p' "$runtime_directory/backstage.log" >&2
+  fail 'Backstage catalog entities were not ingested'
+fi
+if ! jq -e '
+  .metadata.annotations."backstage.io/techdocs-ref" ==
+    "dir:." and
+  any(.relations[]?; .type == "dependsOn" and
+    .targetRef == "resource:default/secure-fastapi-service-argocd")
+' <<<"$catalog_entity" >/dev/null; then
+  jq -c . <<<"$catalog_entity" >&2
+  fail 'Backstage Component catalog contract did not match'
+fi
+
+techdocs_response_file="$runtime_directory/backstage-techdocs.json"
+techdocs_status="$(curl -sS -o "$techdocs_response_file" -w '%{http_code}' \
+  -H "$auth_header" \
+  "$backstage_url/api/techdocs/metadata/entity/default/component/secure-fastapi-service")"
+if [[ "$techdocs_status" != '200' ]]; then
+  jq -c . "$techdocs_response_file" >&2 2>/dev/null ||
+    sed -n '1,120p' "$techdocs_response_file" >&2
+  sed -n '1,240p' "$runtime_directory/backstage.log" >&2
+  fail "Backstage TechDocs metadata returned HTTP $techdocs_status"
+fi
+techdocs_entity="$(<"$techdocs_response_file")"
+if ! jq -e '
+  .metadata.name == "secure-fastapi-service" and
+  .metadata.annotations."backstage.io/techdocs-ref" ==
+    "dir:."
+' <<<"$techdocs_entity" >/dev/null; then
+  jq -c . <<<"$techdocs_entity" >&2
+  fail 'Backstage TechDocs metadata contract did not match'
+fi
+
+workload_response_file="$runtime_directory/backstage-workloads.json"
+workload_status="$(curl -sS -o "$workload_response_file" -w '%{http_code}' \
+  -H "$auth_header" \
+  -H 'Content-Type: application/json' \
+  -d '{"entityRef":"component:default/secure-fastapi-service","auth":{}}' \
+  "$backstage_url/api/kubernetes/resources/workloads/query")"
+if [[ "$workload_status" != '200' ]]; then
+  jq -c . "$workload_response_file" >&2 2>/dev/null ||
+    sed -n '1,120p' "$workload_response_file" >&2
+  sed -n '1,240p' "$runtime_directory/backstage.log" >&2
+  fail "Backstage workload query returned HTTP $workload_status"
+fi
+workload_response="$(<"$workload_response_file")"
+if ! jq -e --arg deployment "$deployment" '
+  (.items | length) == 1 and
+  (.items[0].errors | length) == 1 and
+  any(.items[0].errors[]?;
+    .statusCode == 403 and
+    .resourcePath ==
+      "/apis/argoproj.io/v1alpha1/namespaces/secure-fastapi-service-local/applications") and
+  any(.items[0].resources[]?;
+    .type == "deployments" and
+    any(.resources[]?; .metadata.name == $deployment and
+      .status.availableReplicas >= 1)) and
+  any(.items[0].resources[]?;
+    .type == "pods" and
+    any(.resources[]?; any(.status.conditions[]?;
+      .type == "Ready" and .status == "True")))
+' <<<"$workload_response" >/dev/null; then
+  jq -c . <<<"$workload_response" >&2
+  fail 'Backstage workload response did not contain the ready demo workload'
+fi
+
+application_response_file="$runtime_directory/backstage-applications.json"
+application_status="$(curl -sS -o "$application_response_file" -w '%{http_code}' \
+  -H "$auth_header" \
+  -H 'Content-Type: application/json' \
+  -d '{"entityRef":"resource:default/secure-fastapi-service-argocd","auth":{},"customResources":[{"group":"argoproj.io","apiVersion":"v1alpha1","plural":"applications"}]}' \
+  "$backstage_url/api/kubernetes/resources/custom/query")"
+if [[ "$application_status" != '200' ]]; then
+  jq -c . "$application_response_file" >&2 2>/dev/null ||
+    sed -n '1,120p' "$application_response_file" >&2
+  sed -n '1,240p' "$runtime_directory/backstage.log" >&2
+  fail "Backstage Argo CD Application query returned HTTP $application_status"
+fi
+application_response="$(<"$application_response_file")"
+if ! jq -e --arg application "$application_name" '
+  (.items | length) == 1 and
+  (.items[0].errors | length) == 0 and
+  any(.items[0].resources[]?;
+    .type == "customresources" and
+    any(.resources[]?; .metadata.name == $application and
+      .status.sync.status == "Synced" and
+      .status.health.status == "Healthy"))
+' <<<"$application_response" >/dev/null; then
+  jq -c . <<<"$application_response" >&2
+  fail 'Backstage Application response did not contain Synced and Healthy status'
+fi
+
+backstage_proxy_status="$(curl -sS -o /dev/null -w '%{http_code}' \
+  -H "$auth_header" -H 'Backstage-Kubernetes-Cluster: local' \
+  "$backstage_url/api/kubernetes/proxy/api/v1/namespaces")"
+[[ "$backstage_proxy_status" == '403' ]] ||
+  fail "Backstage kubernetes.proxy permission was not denied: HTTP $backstage_proxy_status"
+
+if [[ -n "${FORGEPATH_SCREENSHOT_HOLD_FILE:-}" ]]; then
+  [[ "$FORGEPATH_SCREENSHOT_HOLD_FILE" == /private/tmp/forgepath-screenshot-* ]] ||
+    fail 'screenshot hold file must be beneath /private/tmp with the forgepath-screenshot- prefix'
+  log "screenshot capture ready: http://localhost:$backstage_frontend_port"
+  screenshot_deadline=$((SECONDS + 600))
+  while [[ ! -e "$FORGEPATH_SCREENSHOT_HOLD_FILE" ]]; do
+    ((SECONDS < screenshot_deadline)) || fail 'timed out waiting for screenshot capture'
+    sleep 2
+  done
+fi
+
 log "PASS source resolution: Helm at $initial_revision"
 log 'PASS initial state: Synced, Healthy, Deployment, Pod, Service, ServiceAccount, NetworkPolicy'
 log "PASS trusted runtime image: $trusted_reference"
 log 'PASS readiness, liveness, metrics, Argo CD tracking, and no Helm release ownership'
 log "PASS reconciliation: self-heal; Git replicas at $replica_revision; create $create_revision; prune $prune_revision"
 log 'PASS containment: unauthorized repository, destination namespace, Secret, and ClusterRole rejected'
+log 'PASS Backstage catalog and TechDocs metadata: secure-fastapi-service'
+log 'PASS Backstage workload visibility: Deployment and ready Pod'
+log 'PASS Backstage Argo CD visibility: Application Synced and Healthy'
+log 'PASS read-only identity: get/list/watch only; Secrets, delete, exec, mutation, sync, and credentials denied'
 log "VERSIONS Kind $kind_version; Kubernetes $observed_server; Argo CD $argocd_version"
 
 exit 0

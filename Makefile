@@ -1,7 +1,19 @@
-.PHONY: build-trusted-artifact test-trusted-artifact validate-backstage-static validate-foundation \
+.PHONY: build-trusted-artifact test-trusted-artifact validate-backstage-runtime \
+	validate-backstage-static validate-foundation \
 	validate-gitops-runtime validate-gitops-static validate-policy validate-secure-fastapi \
 	validate-kyverno-runtime validate-kyverno-static validate-security \
-	validate-trusted-artifact
+	validate-trusted-artifact validate-v1 validate-v1-static
+
+validate-v1: validate-foundation validate-trusted-artifact validate-backstage-runtime \
+	validate-kyverno-runtime
+	@printf 'ForgePath v1 end-to-end validation passed.\n'
+
+validate-v1-static: validate-foundation validate-security validate-backstage-static \
+	validate-gitops-static
+	@printf 'ForgePath v1 static validation passed.\n'
+
+validate-backstage-runtime: validate-backstage-static validate-gitops-runtime
+	@printf 'ForgePath Backstage read-only runtime validation passed.\n'
 
 validate-backstage-static:
 	@if command -v mise >/dev/null; then \

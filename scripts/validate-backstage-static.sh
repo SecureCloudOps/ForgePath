@@ -77,6 +77,12 @@ fi
 
 yq -e '
   .permission.enabled == true and
+  (.catalog.rules[0].allow | contains(["Resource"])) and
+  .catalog.locations[0].target == "../../catalog/entities.yaml" and
+  .catalog.locations[1].target ==
+    "../../../../services/secure-fastapi-service/catalog-info.yaml" and
+  .catalog.locations[2].target ==
+    "../../../../templates/secure-fastapi-service/template.yaml" and
   .app.routes.bindings."scaffolder.registerComponent" == false and
   .kubernetes.frontend.podDelete.enabled == false and
   .kubernetes.clusterLocatorMethods[0].type == "localKubectlProxy" and
@@ -84,6 +90,33 @@ yq -e '
   .kubernetes.customResources[0].apiVersion == "v1alpha1" and
   .kubernetes.customResources[0].plural == "applications"
 ' "$backstage_root/app-config.yaml" >/dev/null
+yq -o=json -I=0 '.' "$backstage_root/catalog/entities.yaml" | jq -s -e '
+  any(.[];
+    .kind == "Resource" and
+    .metadata.name == "secure-fastapi-service-argocd" and
+    .metadata.annotations."backstage.io/kubernetes-label-selector" ==
+      "app.kubernetes.io/name=secure-fastapi-service" and
+    .metadata.annotations."backstage.io/kubernetes-namespace" == "argocd" and
+    .spec.type == "argocd-application" and
+    .spec.dependencyOf == ["component:default/secure-fastapi-service"])
+' >/dev/null
+yq -o=json -I=0 '.' \
+  "$repository_root/services/secure-fastapi-service/catalog-info.yaml" | jq -e '
+    .kind == "Component" and
+    .metadata.name == "secure-fastapi-service" and
+    .metadata.annotations."backstage.io/techdocs-ref" == "dir:." and
+    .metadata.annotations."backstage.io/kubernetes-namespace" ==
+      "secure-fastapi-service-local" and
+    .spec.dependsOn == ["resource:default/secure-fastapi-service-argocd"]
+  ' >/dev/null
+yq -e '
+  .site_name == "Secure FastAPI service" and
+  .plugins[] == "techdocs-core" and
+  .nav[0].Overview == "index.md"
+' "$repository_root/services/secure-fastapi-service/mkdocs.yml" >/dev/null
+for document in docs/index.md docs/runtime.md; do
+  test -s "$repository_root/services/secure-fastapi-service/$document"
+done
 rg -F "request.permission.name === 'kubernetes.proxy'" \
   "$backstage_root/packages/backend/src/modules/forgePathPermissions.ts" >/dev/null
 rg -F "AuthorizeResult.DENY" \

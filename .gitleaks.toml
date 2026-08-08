@@ -14,4 +14,7 @@ description = "Synthetic fixtures and ignored local artifact outputs"
 paths = [
   '''tests/security/fixtures/fake-secret\.txt''',
   '''^\.forgepath/''',
+  # Backstage builds ignored third-party bundles and source maps here. Git
+  # history is still scanned separately, while source remains in scope.
+  '''^platform/backstage/packages/[^/]+/dist/''',
 ]

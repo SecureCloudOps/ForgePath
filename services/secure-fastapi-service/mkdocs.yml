@@ -1,0 +1,7 @@
+site_name: Secure FastAPI service
+site_description: ForgePath reference paved-path service
+nav:
+  - Overview: index.md
+  - Runtime: runtime.md
+plugins:
+  - techdocs-core

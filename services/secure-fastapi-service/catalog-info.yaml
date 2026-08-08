@@ -1,0 +1,16 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: secure-fastapi-service
+  description: The reference ForgePath secure FastAPI paved-path workload
+  annotations:
+    backstage.io/techdocs-ref: dir:.
+    backstage.io/kubernetes-label-selector: app.kubernetes.io/name=secure-fastapi-service
+    backstage.io/kubernetes-namespace: secure-fastapi-service-local
+spec:
+  type: service
+  lifecycle: experimental
+  owner: group:default/platform
+  system: forgepath
+  dependsOn:
+    - resource:default/secure-fastapi-service-argocd
