@@ -1,6 +1,6 @@
 # ForgePath
 
-[![Validation](https://github.com/SecureCloudOps/ForgePath/actions/workflows/validation.yml/badge.svg)](https://github.com/SecureCloudOps/ForgePath/actions/workflows/validation.yml)
+[![Validation](https://github.com/SecureCloudOps/ForgePath/actions/workflows/validation.yml/badge.svg?branch=main)](https://github.com/SecureCloudOps/ForgePath/actions/workflows/validation.yml?query=branch%3Amain)
 
 ForgePath is a local, end-to-end implementation of a secure platform-engineering
 paved path. A developer generates a production-minded FastAPI service from
@@ -138,8 +138,15 @@ completion criterion.
 
 - [Architecture](docs/ARCHITECTURE.md)
 - [End-to-end demo and screenshot checklist](docs/DEMO.md)
+- [V1 validation evidence](docs/evidence/V1_VALIDATION.md)
 - [Threat model](docs/THREAT_MODEL.md)
 - [GitOps design and rollback](gitops/README.md)
 - [Backstage boundary](platform/backstage/README.md)
 - [Roadmap](docs/ROADMAP.md)
 - [ADRs](docs/adr/README.md)
+
+## License
+
+ForgePath is licensed under the [Apache License 2.0](LICENSE).
+
+Copyright 2026 Mohamed SecureCloudOps. See [NOTICE](NOTICE).

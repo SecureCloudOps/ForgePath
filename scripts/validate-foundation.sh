@@ -7,6 +7,8 @@ cd "$repository_root"
 
 required_files=(
   README.md
+  LICENSE
+  NOTICE
   .gitignore
   mise.toml
   Makefile
@@ -31,6 +33,17 @@ for file in "${required_files[@]}"; do
     exit 1
   fi
 done
+
+if ! grep -Fq 'Apache License' LICENSE ||
+  ! grep -Fq 'Version 2.0, January 2004' LICENSE; then
+  printf 'LICENSE must contain the canonical Apache License 2.0 text\n' >&2
+  exit 1
+fi
+
+if ! grep -Fxq 'Copyright 2026 Mohamed SecureCloudOps' NOTICE; then
+  printf 'NOTICE must contain the ForgePath copyright attribution\n' >&2
+  exit 1
+fi
 
 if [[ ! -d templates ]]; then
   printf 'missing required directory: templates\n' >&2

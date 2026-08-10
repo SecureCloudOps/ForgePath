@@ -15,3 +15,6 @@ The warning banner in the Kubernetes frames is expected evidence of namespace
 containment: the workload entity cannot read Applications outside `argocd`, and
 the Argo CD entity cannot read unrelated workloads. The authorized status cards
 remain visible. No kubeconfig, credential, token, or Secret value is present.
+
+See the [v1 validation evidence](../evidence/V1_VALIDATION.md) for the matching
+Argo CD reconciliation, Kyverno admission, cleanup, and final-gate transcript.

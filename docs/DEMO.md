@@ -86,9 +86,10 @@ Record these five frames during the approved demo run and save them beneath
 4. Kubernetes status showing the ready Deployment and Pod; and
 5. the related Argo CD resource showing `Synced` and `Healthy`.
 
-Also capture terminal frames for the policy rejection, Argo CD self-heal `PASS`,
-and Kyverno admission rejection `PASS`. Do not include kubeconfigs, tokens,
-Secret values, environment dumps, or unrelated desktop content.
+The non-sensitive terminal proof for the policy controls, Argo CD self-heal,
+Kyverno admission rejection, cleanup, and final gate is recorded in the
+[v1 validation evidence](evidence/V1_VALIDATION.md). It excludes kubeconfigs,
+tokens, Secret values, environment dumps, and unrelated desktop content.
 
 ## Final validation
 
