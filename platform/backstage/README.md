@@ -8,7 +8,8 @@ security checks, trusted-artifact flow, Git desired state, Argo CD, or Kyverno.
 
 ## Pinned bootstrap
 
-The app targets Backstage `1.53.0`, Node.js `22.22.2`, and Yarn `4.13.0`.
+The app targets Backstage `1.53.0`, Node.js `22.22.2`, Yarn `4.13.0`, MkDocs
+`1.6.1`, and `mkdocs-techdocs-core` `1.7.0`.
 [`bootstrap.lock.json`](bootstrap.lock.json) records the reviewed
 `@backstage/create-app` `0.9.0` tarball and npm integrity value. Direct package
 versions are exact and `yarn.lock` pins the resolved dependency graph.

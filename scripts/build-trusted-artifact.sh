@@ -16,6 +16,7 @@ artifact_parent="$repository_root/.forgepath"
 artifact_directory="$artifact_parent/trusted-artifact"
 image_repository="forgepath/secure-fastapi-service"
 image_tag="$image_repository:0.1.0-local"
+build_input="templates/secure-fastapi-service"
 
 mkdir -p "$artifact_parent"
 staging_directory="$(mktemp -d "$artifact_parent/trusted-artifact.XXXXXX")"
@@ -38,13 +39,20 @@ trusted_marker="$staging_directory/TRUSTED"
 trivy_cache="$work_directory/trivy-cache"
 oci_layout="$work_directory/oci-layout"
 
-source_revision="$(git rev-parse --verify HEAD 2>/dev/null || true)"
+# Bind provenance to the service renderer that supplies the complete image build
+# context. Repository-wide HEAD would make unrelated documentation changes alter
+# the image digest and create a circular GitOps digest-promotion workflow.
+source_revision="$(git log -1 --format=%H -- "$build_input" 2>/dev/null || true)"
 source_dirty=false
-if [[ -n "$(git status --porcelain --untracked-files=no)" ]]; then
+if [[ -n "$(git status --porcelain --untracked-files=all -- "$build_input")" ]]; then
   source_dirty=true
 fi
-build_timestamp="$(git show -s --format=%cI HEAD 2>/dev/null || true)"
-source_date_epoch="$(git show -s --format=%ct HEAD 2>/dev/null || true)"
+build_timestamp=""
+source_date_epoch=""
+if [[ -n "$source_revision" ]]; then
+  build_timestamp="$(git show -s --format=%cI "$source_revision" 2>/dev/null || true)"
+  source_date_epoch="$(git show -s --format=%ct "$source_revision" 2>/dev/null || true)"
+fi
 
 python_bin="${PYTHON_BIN:-python3.12}"
 if ! command -v "$python_bin" >/dev/null; then

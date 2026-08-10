@@ -42,7 +42,7 @@ Choose **Create → Secure FastAPI service**. Output is confined to
 | Repository foundation | `make validate-foundation` | Required structure, documentation, architecture stages, and shell safety |
 | Paved path and security | `make validate-security` | Tests, scans, schemas, Helm, OPA, and Kyverno CLI negative fixtures |
 | Trusted artifact | `make validate-trusted-artifact` | OCI archive, Trivy report, SPDX SBOM, digest, and locally verified ephemeral signature |
-| Backstage | `make validate-backstage-static` | Pinned app, catalog, TechDocs contract, renderer confinement, and permissions |
+| Backstage | `make validate-backstage-static` | Pinned app and MkDocs toolchain, rendered TechDocs, catalog, renderer confinement, and permissions |
 | GitOps | `make validate-gitops-static` | Restricted AppProject/Application, trusted digest handoff, render, schema, and policy checks |
 | Backstage + Argo runtime | `make validate-backstage-runtime` | Disposable Kind deployment, reconciliation, read-only Backstage workload and Application status, and RBAC denials |
 | Kyverno runtime | `make validate-kyverno-runtime` | Compliant admission and unsafe Pod rejection through the Kubernetes API |

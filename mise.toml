@@ -10,6 +10,7 @@ kubectl = "1.32.11"
 kyverno = "1.18.2"
 node = "22.22.2"
 pipx = "1.7.1"
+"pipx:mkdocs-techdocs-core" = { version = "1.7.0", pipx_args = "--preinstall mkdocs==1.6.1 --include-deps", depends = ["python"] }
 python = "3.12.13"
 semgrep = "1.172.0"
 shellcheck = "0.10.0"

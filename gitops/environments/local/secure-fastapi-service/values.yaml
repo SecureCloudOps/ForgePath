@@ -2,7 +2,7 @@ replicaCount: 1
 
 image:
   repository: forgepath/secure-fastapi-service
-  digest: "sha256:e0a5b5f594e2fc5b8fca9f229ccd3d737155cf78877d710dda6acab5d9c381b2"
+  digest: "sha256:14eb1fc9a1d8f6a433bd21efe671f92ac7526deccf79f7b5ee583422e4beef81"
   pullPolicy: IfNotPresent
 
 service:

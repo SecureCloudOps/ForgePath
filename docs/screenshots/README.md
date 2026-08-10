@@ -1,11 +1,12 @@
 # Demo screenshots
 
 These non-sensitive frames came from the passing `forgepath-gitops` runtime
-proof on 2026-08-08:
+proof on 2026-08-08 and the pinned local TechDocs render on 2026-08-10:
 
 - `backstage-catalog.png` — the one-service ForgePath catalog;
 - `backstage-service-overview.png` — the service, TechDocs entry point, and
   related Argo CD catalog Resource;
+- `backstage-techdocs.png` — the rendered reference-service documentation;
 - `backstage-kubernetes-workload.png` — the live Deployment and Pod status; and
 - `backstage-argocd-application.png` — the related Application with `Healthy`
   and `Synced` status.

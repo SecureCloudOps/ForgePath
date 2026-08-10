@@ -6,12 +6,19 @@ repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 backstage_root="$repository_root/platform/backstage"
 python_bin="${PYTHON_BIN:-python3.12}"
 
-for tool in corepack diff jq node rg "$python_bin" yq; do
+for tool in corepack diff jq mkdocs node rg "$python_bin" yq; do
   if ! command -v "$tool" >/dev/null; then
     printf 'required tool not found: %s\n' "$tool" >&2
     exit 1
   fi
 done
+
+if [[ "$(mkdocs --version)" != *'mkdocs, version 1.6.1'* ]]; then
+  printf 'MkDocs 1.6.1 is required, got: %s\n' "$(mkdocs --version)" >&2
+  exit 1
+fi
+rg -F '"pipx:mkdocs-techdocs-core" = { version = "1.7.0", pipx_args = "--preinstall mkdocs==1.6.1 --include-deps", depends = ["python"] }' \
+  "$repository_root/mise.toml" >/dev/null
 
 work_directory="$(mktemp -d)"
 cleanup() {
@@ -33,6 +40,10 @@ jq -e '
   .engines.node == "22.22.2" and
   .packageManager == "yarn@4.13.0"
 ' "$backstage_root/package.json" >/dev/null
+jq -e '
+  .dependencies."@backstage/plugin-search" == "1.7.6" and
+  .dependencies."@backstage/plugin-search-react" == "1.11.6"
+' "$backstage_root/packages/app/package.json" >/dev/null
 if [[ "$(node --version)" != "v22.22.2" ]]; then
   printf 'Node.js v22.22.2 is required, got: %s\n' "$(node --version)" >&2
   exit 1
@@ -117,6 +128,10 @@ yq -e '
 for document in docs/index.md docs/runtime.md; do
   test -s "$repository_root/services/secure-fastapi-service/$document"
 done
+mkdocs build --strict --clean \
+  --config-file "$repository_root/services/secure-fastapi-service/mkdocs.yml" \
+  --site-dir "$work_directory/techdocs-site"
+test -s "$work_directory/techdocs-site/index.html"
 rg -F "request.permission.name === 'kubernetes.proxy'" \
   "$backstage_root/packages/backend/src/modules/forgePathPermissions.ts" >/dev/null
 rg -F "AuthorizeResult.DENY" \

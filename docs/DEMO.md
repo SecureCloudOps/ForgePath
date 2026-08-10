@@ -76,14 +76,15 @@ controller to prove fail-closed enforcement remains active.
 
 ## Screenshot set
 
-Record these four frames during the approved demo run and save them beneath
+Record these five frames during the approved demo run and save them beneath
 `docs/screenshots/`:
 
 1. the one-service ForgePath catalog;
 2. the `secure-fastapi-service` overview with its TechDocs entry point and
    related Argo CD Resource;
-3. Kubernetes status showing the ready Deployment and Pod; and
-4. the related Argo CD resource showing `Synced` and `Healthy`.
+3. the rendered TechDocs overview for the reference service;
+4. Kubernetes status showing the ready Deployment and Pod; and
+5. the related Argo CD resource showing `Synced` and `Healthy`.
 
 Also capture terminal frames for the policy rejection, Argo CD self-heal `PASS`,
 and Kyverno admission rejection `PASS`. Do not include kubeconfigs, tokens,
