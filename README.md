@@ -1,14 +1,44 @@
 # ForgePath
 
-ForgePath is a local portfolio implementation of one secure paved path. A
-developer generates `secure-fastapi-service`; ForgePath validates it, builds and
-signs an immutable trusted artifact, promotes its digest through Git, reconciles
-it with Argo CD, enforces admission with Kyverno, and exposes read-only status
-in Backstage.
+[![Validation](https://github.com/SecureCloudOps/ForgePath/actions/workflows/validation.yml/badge.svg)](https://github.com/SecureCloudOps/ForgePath/actions/workflows/validation.yml)
 
-```text
-Backstage -> secure-fastapi-service -> Catalog + TechDocs
-          -> Kubernetes workload status -> Argo CD Application status
+ForgePath is a local, end-to-end implementation of a secure platform-engineering
+paved path. A developer generates a production-minded FastAPI service from
+Backstage; ForgePath validates the source and manifests, builds and signs an
+immutable artifact, promotes its digest through Git, reconciles it with Argo CD,
+enforces admission with Kyverno, and returns read-only runtime status to
+Backstage.
+
+![ForgePath service overview in Backstage](docs/screenshots/backstage-service-overview.png)
+
+[View the complete catalog, TechDocs, Kubernetes, and Argo CD screenshot set.](docs/screenshots/README.md)
+
+## Why ForgePath
+
+- **One reproducible developer path:** Backstage and the command line use the
+  same repository-owned service renderer.
+- **Evidence before promotion:** tests, policy checks, vulnerability scans, an
+  SPDX SBOM, an immutable digest, and a local signature travel through explicit
+  validation gates.
+- **GitOps with a constrained feedback loop:** Argo CD and Kyverno control
+  delivery while Backstage receives status through a deliberately read-only
+  Kubernetes identity.
+
+## How it works
+
+```mermaid
+flowchart LR
+  developer["Developer"] --> backstage["Backstage template"]
+  backstage --> renderer["Repository-owned renderer"]
+  renderer --> validation["Tests, scans, and policy gates"]
+  validation --> artifact["Signed OCI artifact + SBOM"]
+  artifact --> git["Git desired state<br/>immutable digest"]
+  git --> argocd["Argo CD"]
+  argocd --> kyverno["Kyverno admission"]
+  kyverno --> workload["Kubernetes workload"]
+  reader["Read-only runtime identity"] -. status .-> workload
+  reader -. status .-> argocd
+  reader -.-> backstage
 ```
 
 The v1 scope is deliberately narrow: one template, one service, one local
@@ -18,17 +48,29 @@ work.
 
 ## Quick start
 
-Install the pinned toolchain and start Docker:
+### Prerequisites
+
+- macOS or Linux with Git, Make, and a Bash-compatible shell;
+- [mise](https://mise.jdx.dev/) for the pinned toolchain; and
+- a running Docker engine.
+
+Install the pinned tools and run the non-cluster release gates from the
+repository root:
 
 ```sh
 mise install
 make validate-v1-static
 ```
 
-Run the local portal:
+`validate-v1-static` does not contact or mutate a Kubernetes cluster. It does
+build containers and may download locked packages, base images, vulnerability
+data, and schemas on the first run.
+
+Run the local Backstage portal:
 
 ```sh
 cd platform/backstage
+corepack yarn install --immutable
 corepack yarn start
 ```
 
@@ -46,6 +88,10 @@ Choose **Create → Secure FastAPI service**. Output is confined to
 | GitOps | `make validate-gitops-static` | Restricted AppProject/Application, trusted digest handoff, render, schema, and policy checks |
 | Backstage + Argo runtime | `make validate-backstage-runtime` | Disposable Kind deployment, reconciliation, read-only Backstage workload and Application status, and RBAC denials |
 | Kyverno runtime | `make validate-kyverno-runtime` | Compliant admission and unsafe Pod rejection through the Kubernetes API |
+
+GitHub Actions runs the paved-path security and Backstage static gates on pull
+requests and pushes to `main`. The complete runtime proof remains local because
+it deliberately creates disposable Kubernetes clusters.
 
 Runtime gates create, mutate, and delete only named disposable Kind clusters.
 They require explicit approval under `AGENTS.md`, refuse pre-existing target
@@ -74,8 +120,19 @@ After approval for the disposable cluster mutations:
 make validate-v1
 ```
 
-That is the v1 release gate. Stop adding features once it passes and the demo
-screenshots are recorded.
+That command, together with the recorded screenshot set, is the ForgePath v1
+completion criterion.
+
+## Repository map
+
+| Path | Purpose |
+| --- | --- |
+| `templates/` | Backstage-compatible secure service template and renderer |
+| `services/` | Rendered reference service, Helm chart, catalog metadata, and TechDocs |
+| `policies/` | OPA/Conftest and Kyverno enforcement policies |
+| `gitops/` | Restricted Argo CD project, application, and local desired state |
+| `platform/backstage/` | Pinned local portal and read-only runtime integration |
+| `scripts/` and `tests/` | Executable validation gates and negative fixtures |
 
 ## Documentation
 
