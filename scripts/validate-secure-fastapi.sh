@@ -7,7 +7,7 @@ cd "$repository_root"
 
 python_bin="${PYTHON_BIN:-python3.12}"
 
-for tool in "$python_bin" docker gitleaks helm jq kubeconform semgrep trivy yq; do
+for tool in "$python_bin" docker gitleaks helm jq kubeconform rg semgrep trivy yq; do
   if ! command -v "$tool" >/dev/null; then
     printf 'required tool not found: %s\n' "$tool" >&2
     exit 1

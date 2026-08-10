@@ -14,7 +14,7 @@ elif [[ -n "${1:-}" ]]; then
 fi
 
 python_bin="${PYTHON_BIN:-python3.12}"
-for tool in "$python_bin" conftest helm jq kubeconform yq; do
+for tool in "$python_bin" conftest helm jq kubeconform rg yq; do
   if ! command -v "$tool" >/dev/null; then
     printf 'required GitOps validation tool not found: %s\n' "$tool" >&2
     exit 1
