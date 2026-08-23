@@ -37,6 +37,8 @@ ForgePath will be built in small, demonstrable increments:
     narrowly scoped observability. Complete, runtime-proven, and frozen. See the
     [namespace-isolation validation evidence](evidence/NAMESPACE_ISOLATION.md).
 16. Add workload RBAC boundaries and explicit negative authorization tests.
+    Static implementation and disposable runtime harness complete; runtime proof
+    awaits separate cluster-mutation approval.
 17. Add the time-bounded, owner-approved, narrowly scoped exception mechanism
     with expiry failure tests.
 

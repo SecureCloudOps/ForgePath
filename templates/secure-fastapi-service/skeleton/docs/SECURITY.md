@@ -14,6 +14,8 @@
 - ResourceQuota and LimitRange bound aggregate namespace consumption and each
   container's CPU and memory allocation.
 - Resource requests and limits reduce noisy-neighbor and exhaustion risk.
+- The application has no Kubernetes API requirement, receives no Role or
+  RoleBinding, and keeps controller permissions on separate platform identities.
 
 ## Reporting
 

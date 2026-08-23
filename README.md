@@ -92,6 +92,8 @@ Choose **Create → Secure FastAPI service**. Output is confined to
 | Platform guardrails static | `make validate-platform-guardrails-static` | Required ownership metadata, approved registry and digest-only policy, trusted-image policy structure, and negative fixtures |
 | Namespace protections static | `make validate-namespace-protections-static` | Restricted PSA metadata, namespace-wide deny-all networking, DNS/Prometheus exceptions, quota, limits, and negative fixtures |
 | Namespace protections runtime | `make validate-namespace-protections-runtime` | Disposable Kind proof of service, scrape, and DNS success plus ingress, egress, quota, limit, and restricted-PSA denial |
+| Workload identity static | `make validate-workload-identity-static` | Zero application RBAC grants, disabled token automount, no token projection, and AppProject denial of workload-owned RBAC |
+| Workload identity runtime | `make validate-workload-identity-runtime` | Disposable Kind proof of application API denial, negative `auth can-i` paths, and isolated platform reconciliation |
 | Observability static | `make validate-observability-static` | Prometheus rules, 96.67% degradation fixture, dashboard, Helm resources, and restricted scrape policy |
 | Vulnerability data (online) | `make validate-observability-online` | One cached Trivy DB snapshot followed by update-disabled filesystem and image scans |
 | Observability runtime | `make validate-observability-runtime` | Disposable Kind proof of live scraping, controlled degradation, and fast-burn alert firing |

@@ -82,6 +82,29 @@ observations, and Git rollback are in the reference service's
 Installing the Argo Rollouts prerequisites and running the cluster mutation are
 a separate approval boundary.
 
+## Workload-identity demonstration
+
+The application has no Kubernetes API requirement, so its explicit permission
+set is empty and both its ServiceAccount and Pod disable token automount. The
+AppProject also refuses application-owned RBAC resources.
+
+```sh
+make validate-workload-identity-static
+```
+
+After explicit approval for the disposable cluster mutation:
+
+```sh
+make validate-workload-identity-runtime
+```
+
+The runtime story is `healthy application -> short-lived application identity
+calls the Secrets API -> HTTP 403 -> isolated platform reconciler patches only
+its named Deployment -> application identity cannot perform the same patch`.
+The harness also runs negative `kubectl auth can-i` checks for Secrets,
+Deployments, Rollouts, AnalysisRuns, Kyverno policies, NetworkPolicies,
+privileged-workload creation, token requests, and identity impersonation.
+
 ## ForgePath v1 demo
 
 This demo tells one story with one service:

@@ -11,3 +11,8 @@ Backstage runtime visibility uses a separate identity. That identity may only
 `get`, `list`, and `watch` the selected workload objects and the matching Argo
 CD Application. It cannot read Secrets, delete Pods, execute commands, mutate
 workloads, request service-account tokens, or update/sync the Application.
+
+The application itself does not require Kubernetes API access and therefore has
+no Role or RoleBinding. Platform controllers use separate identities and
+bindings; their permissions are never attached to the application
+ServiceAccount.

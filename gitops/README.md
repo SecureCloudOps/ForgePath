@@ -38,6 +38,12 @@ The Application creates only its fixed destination namespace and applies
 version-pinned `restricted` Pod Security Admission labels through Argo CD
 managed namespace metadata.
 
+Role and RoleBinding are deliberately absent from the namespace allowlist. The
+application has no Kubernetes API requirement, receives no RBAC grant, and runs
+without an automounted token. Controller permissions remain installation-owned
+prerequisites outside the application repository and are bound to separate
+controller ServiceAccounts.
+
 There is one Application and no ApplicationSet because no current fan-out or
 multi-environment requirement exists.
 

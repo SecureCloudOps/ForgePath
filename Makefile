@@ -7,7 +7,8 @@
 	validate-platform-guardrails-runtime validate-platform-guardrails-static \
 	validate-progressive-delivery-runtime validate-progressive-delivery-static validate-security \
 	validate-security-online validate-security-static validate-trivy-online \
-	validate-trusted-artifact validate-v1 validate-v1-static
+	validate-trusted-artifact validate-v1 validate-v1-static \
+	validate-workload-identity-runtime validate-workload-identity-static
 
 validate-v1: validate-foundation validate-trusted-artifact validate-backstage-runtime \
 	validate-kyverno-runtime
@@ -66,6 +67,24 @@ validate-namespace-protections-runtime: validate-namespace-protections-static
 		./scripts/validate-namespace-protections-runtime.sh; \
 	fi
 	@printf 'ForgePath namespace-protections runtime validation passed.\n'
+
+validate-workload-identity-static: validate-secure-fastapi validate-gitops-static
+	@if command -v mise >/dev/null; then \
+		mise exec -- shellcheck scripts/validate-workload-identity-static.sh; \
+		mise exec -- ./scripts/validate-workload-identity-static.sh; \
+	else \
+		shellcheck scripts/validate-workload-identity-static.sh; \
+		./scripts/validate-workload-identity-static.sh; \
+	fi
+
+validate-workload-identity-runtime: validate-workload-identity-static validate-trusted-artifact
+	@if command -v mise >/dev/null; then \
+		mise exec -- shellcheck scripts/validate-workload-identity-runtime.sh; \
+		mise exec -- ./scripts/validate-workload-identity-runtime.sh; \
+	else \
+		shellcheck scripts/validate-workload-identity-runtime.sh; \
+		./scripts/validate-workload-identity-runtime.sh; \
+	fi
 
 validate-gitops-runtime: validate-gitops-static
 	@if command -v mise >/dev/null; then \
