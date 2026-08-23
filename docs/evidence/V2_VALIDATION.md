@@ -102,9 +102,8 @@ accelerated fast-burn alert, restores the original context, and deletes the
 cluster. It requires explicit approval immediately before execution. No runtime
 result is claimed in this static evidence record.
 
-Prometheus Operator discovery and Grafana dashboard loading have **not** been
-runtime-proven. They remain unverified until a disposable environment containing
-those components is executed and its non-sensitive evidence is recorded.
-
-Prometheus is now the authoritative health signal for future progressive
-delivery. No progressive-delivery controller is installed in this scope.
+The subsequent disposable Argo Rollouts and Prometheus Operator proof is
+recorded in [Phase 2 progressive-delivery evidence](PHASE_2_PROGRESSIVE_DELIVERY.md).
+It proves Prometheus discovery, the fast-burn alert, analysis failure, rollout
+abort, stable-version protection, Git recovery, final reconciliation, and
+cleanup without claiming a persistent controller installation.
