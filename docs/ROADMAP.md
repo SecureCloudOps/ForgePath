@@ -16,6 +16,11 @@ ForgePath will be built in small, demonstrable increments:
 9. Harden, document, and collect portfolio evidence from the working flow.
    Complete. See the [v1 validation evidence](evidence/V1_VALIDATION.md) and
    [screenshot set](screenshots/README.md).
+10. Define and statically prove the initial Prometheus availability/latency SLO,
+    error budget, burn alerts, dashboard, and restricted scrape path. Complete.
+    See the [v2 validation evidence](evidence/V2_VALIDATION.md).
+11. Run the separately approved disposable observability runtime proof before
+    enabling a progressive-delivery controller.
 
 Details will be designed only when each increment begins. The project will favor
 one complete, secure path over broad platform scope.

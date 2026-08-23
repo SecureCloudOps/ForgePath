@@ -26,8 +26,10 @@ second_render="$work_directory/rendered-second"
 venv="$work_directory/venv"
 image="forgepath/secure-fastapi-validation:0.1.0"
 trivy_cache="$work_directory/trivy-cache"
-schema_cache="$work_directory/kubeconform-cache"
-mkdir -p "$schema_cache"
+schema_directory="$repository_root/gitops/schemas/kubernetes/v1.32.0-standalone-strict"
+
+# Static misconfiguration scans use the checks embedded in the repository-pinned
+# Trivy binary. Vulnerability DB acquisition belongs only to the online gate.
 
 expect_exit_one() {
   local description="$1"
@@ -49,7 +51,8 @@ assert_trivy_rejects() {
   local target="$2"
   local report="$3"
 
-  trivy config --cache-dir "$trivy_cache" --exit-code 0 \
+  trivy config --cache-dir "$trivy_cache" --exit-code 0 --quiet \
+    --skip-check-update --skip-version-check \
     --format json --output "$report" --severity HIGH,CRITICAL "$target"
   if ! jq -e \
     '[.Results[]?.Misconfigurations[]? | select(.Severity == "HIGH" or .Severity == "CRITICAL")] | length > 0' \
@@ -59,7 +62,8 @@ assert_trivy_rejects() {
     exit 1
   fi
   expect_exit_one "$description" trivy config --cache-dir "$trivy_cache" \
-    --exit-code 1 --quiet --severity HIGH,CRITICAL "$target"
+    --exit-code 1 --quiet --severity HIGH,CRITICAL \
+    --skip-check-update --skip-version-check "$target"
 }
 
 "$python_bin" templates/secure-fastapi-service/render.py \
@@ -98,18 +102,7 @@ expect_exit_one "synthetic committed secret fixture" gitleaks dir \
   --config .gitleaks.toml --exit-code 1 --no-banner --redact \
   "$work_directory/negative-secret"
 
-trivy fs --cache-dir "$trivy_cache" --exit-code 1 --scanners vuln \
-  --severity HIGH,CRITICAL --skip-version-check "$rendered"
-mkdir -p "$work_directory/development-dependencies"
-cp "$rendered/requirements-dev.txt" \
-  "$work_directory/development-dependencies/requirements.txt"
-trivy fs --cache-dir "$trivy_cache" --exit-code 1 --scanners vuln \
-  --severity HIGH,CRITICAL --skip-version-check \
-  "$work_directory/development-dependencies"
-
 docker build --tag "$image" "$rendered"
-trivy image --cache-dir "$trivy_cache" --exit-code 1 --scanners vuln \
-  --severity HIGH,CRITICAL --skip-version-check "$image"
 container_user="$(docker image inspect "$image" --format '{{.Config.User}}')"
 if [[ "$container_user" != "10001:10001" ]]; then
   printf 'container user must be 10001:10001, got: %s\n' "$container_user" >&2
@@ -156,16 +149,20 @@ promtool check rules "$rendered/tests/prometheus-rules.yaml"
   promtool test rules prometheus-rules.test.yaml
 )
 
-kubeconform -cache "$schema_cache" -exit-on-error -kubernetes-version 1.32.0 \
-  -strict -skip PrometheusRule,ServiceMonitor -summary "$work_directory/manifests.yaml"
+kubeconform -exit-on-error -strict -skip PrometheusRule,ServiceMonitor -summary \
+  -schema-location "file://$schema_directory/{{.ResourceKind}}{{.KindSuffix}}.json" \
+  "$work_directory/manifests.yaml"
 expect_exit_one "schema-invalid Kubernetes fixture" kubeconform \
-  -cache "$schema_cache" -exit-on-error -kubernetes-version 1.32.0 \
-  -strict tests/security/fixtures/invalid-manifest.yaml
+  -exit-on-error -strict \
+  -schema-location "file://$schema_directory/{{.ResourceKind}}{{.KindSuffix}}.json" \
+  tests/security/fixtures/invalid-manifest.yaml
 
 trivy config --cache-dir "$trivy_cache" --exit-code 1 \
-  --severity HIGH,CRITICAL "$rendered/Dockerfile"
+  --severity HIGH,CRITICAL --quiet --skip-check-update --skip-version-check \
+  "$rendered/Dockerfile"
 trivy config --cache-dir "$trivy_cache" --exit-code 1 \
-  --severity HIGH,CRITICAL "$work_directory/manifests.yaml"
+  --severity HIGH,CRITICAL --quiet --skip-check-update --skip-version-check \
+  "$work_directory/manifests.yaml"
 assert_trivy_rejects "insecure container fixture" \
   tests/security/fixtures/insecure/Dockerfile \
   "$work_directory/insecure-container.json"
@@ -305,4 +302,4 @@ for document in README.md docs/index.md docs/RUNBOOK.md docs/SECURITY.md docs/SL
   test -s "$rendered/$document"
 done
 
-printf 'secure-fastapi-service quality and security validation passed.\n'
+printf 'secure-fastapi-service static quality and security validation passed.\n'

@@ -49,3 +49,8 @@ degradation detection. Restore the value to `false` immediately afterward.
 The rule unit test supplies synthetic eligible 200 and 503 counters and proves
 that availability drops, the error budget reaches zero, and the fast-burn alert
 fires. It does not require enabling the runtime fixture.
+
+Prometheus recordings are the application-health contract for any future
+progressive-delivery controller. Kubernetes readiness still protects traffic,
+but readiness and Argo CD sync health must not be used as substitutes for SLO
+compliance. Missing Prometheus data must fail closed and pause promotion.

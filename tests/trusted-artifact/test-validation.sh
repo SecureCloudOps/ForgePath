@@ -54,6 +54,10 @@ candidate="$(make_candidate missing-sbom)"
 rm -f "$candidate/sbom.spdx.json"
 expect_rejection 'missing SBOM is rejected' "$candidate"
 
+candidate="$(make_candidate missing-trivy-db-metadata)"
+rm -f "$candidate/trivy-db-metadata.json"
+expect_rejection 'missing Trivy DB snapshot evidence is rejected' "$candidate"
+
 candidate="$(make_candidate invalid-signature)"
 printf 'invalid-signature\n' >"$candidate/image-digest.sig"
 signature_sha256="$(shasum -a 256 "$candidate/image-digest.sig" | awk '{print $1}')"

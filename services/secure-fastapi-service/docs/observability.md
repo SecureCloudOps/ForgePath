@@ -34,3 +34,16 @@ to `false` after verifying the SLI, budget, and fast-burn alert.
 The NetworkPolicy scrape exception requires both the `monitoring` namespace
 label and the Prometheus pod label configured in chart values, and permits only
 TCP port 8080. It does not create general workload ingress.
+
+Validation is deliberately separated by side effect and network boundary:
+
+```sh
+make validate-observability-static   # no Kubernetes cluster
+make validate-observability-online   # cached Trivy DB refresh and vulnerability scan
+make validate-observability-runtime  # approved disposable Kind cluster only
+```
+
+The runtime target refuses a pre-existing cluster and is not part of static
+validation. Prometheus is the authoritative application-health input for future
+progressive delivery; readiness remains a traffic-safety check and Argo CD
+health remains a reconciliation signal.

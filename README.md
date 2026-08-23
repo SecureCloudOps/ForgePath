@@ -63,8 +63,10 @@ make validate-v1-static
 ```
 
 `validate-v1-static` does not contact or mutate a Kubernetes cluster. It does
-build containers and may download locked packages, base images, vulnerability
-data, and schemas on the first run.
+build containers and may download locked packages or base images on the first
+run. It does not fetch Trivy vulnerability data. Run `make validate-security`
+when both the static checks and the explicitly online cached vulnerability gate
+are required.
 
 Run the local Backstage portal:
 
@@ -83,15 +85,19 @@ Choose **Create → Secure FastAPI service**. Output is confined to
 | --- | --- | --- |
 | Repository foundation | `make validate-foundation` | Required structure, documentation, architecture stages, and shell safety |
 | Paved path and security | `make validate-security` | Tests, scans, schemas, Helm, OPA, and Kyverno CLI negative fixtures |
-| Trusted artifact | `make validate-trusted-artifact` | OCI archive, Trivy report, SPDX SBOM, digest, and locally verified ephemeral signature |
+| Observability static | `make validate-observability-static` | Prometheus rules, 96.67% degradation fixture, dashboard, Helm resources, and restricted scrape policy |
+| Vulnerability data (online) | `make validate-observability-online` | One cached Trivy DB snapshot followed by update-disabled filesystem and image scans |
+| Observability runtime | `make validate-observability-runtime` | Disposable Kind proof of live scraping, controlled degradation, and fast-burn alert firing |
+| Trusted artifact | `make validate-trusted-artifact` | OCI archive, Trivy report and DB fingerprint, SPDX SBOM, digest, and locally verified ephemeral signature |
 | Backstage | `make validate-backstage-static` | Pinned app and MkDocs toolchain, rendered TechDocs, catalog, renderer confinement, and permissions |
 | GitOps | `make validate-gitops-static` | Restricted AppProject/Application, trusted digest handoff, render, schema, and policy checks |
 | Backstage + Argo runtime | `make validate-backstage-runtime` | Disposable Kind deployment, reconciliation, read-only Backstage workload and Application status, and RBAC denials |
 | Kyverno runtime | `make validate-kyverno-runtime` | Compliant admission and unsafe Pod rejection through the Kubernetes API |
 
-GitHub Actions runs the paved-path security and Backstage static gates on pull
-requests and pushes to `main`. The complete runtime proof remains local because
-it deliberately creates disposable Kubernetes clusters.
+GitHub Actions runs the static paved-path security gate, the separately labeled
+online Trivy gate, and the Backstage static gate on pull requests and pushes to
+`main`. Runtime proofs remain local because they deliberately create disposable
+Kubernetes clusters.
 
 Runtime gates create, mutate, and delete only named disposable Kind clusters.
 They require explicit approval under `AGENTS.md`, refuse pre-existing target
@@ -139,6 +145,7 @@ completion criterion.
 - [Architecture](docs/ARCHITECTURE.md)
 - [End-to-end demo and screenshot checklist](docs/DEMO.md)
 - [V1 validation evidence](docs/evidence/V1_VALIDATION.md)
+- [V2 observability validation evidence](docs/evidence/V2_VALIDATION.md)
 - [Threat model](docs/THREAT_MODEL.md)
 - [GitOps design and rollback](gitops/README.md)
 - [Backstage boundary](platform/backstage/README.md)

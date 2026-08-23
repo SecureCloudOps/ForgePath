@@ -1,14 +1,16 @@
 .PHONY: build-trusted-artifact test-trusted-artifact validate-backstage-runtime \
 	validate-backstage-static validate-foundation \
 	validate-gitops-runtime validate-gitops-static validate-policy validate-secure-fastapi \
-	validate-kyverno-runtime validate-kyverno-static validate-security \
+	validate-kyverno-runtime validate-kyverno-static validate-observability-online \
+	validate-observability-runtime validate-observability-static validate-security \
+	validate-security-online validate-security-static validate-trivy-online \
 	validate-trusted-artifact validate-v1 validate-v1-static
 
 validate-v1: validate-foundation validate-trusted-artifact validate-backstage-runtime \
 	validate-kyverno-runtime
 	@printf 'ForgePath v1 end-to-end validation passed.\n'
 
-validate-v1-static: validate-foundation validate-security validate-backstage-static \
+validate-v1-static: validate-foundation validate-security-static validate-backstage-static \
 	validate-gitops-static
 	@printf 'ForgePath v1 static validation passed.\n'
 
@@ -82,6 +84,30 @@ validate-secure-fastapi:
 	fi
 	@./scripts/validate-secure-fastapi.sh
 
+validate-observability-static: validate-secure-fastapi
+	@printf 'ForgePath observability static validation passed.\n'
+
+validate-trivy-online:
+	@if command -v mise >/dev/null; then \
+		mise exec -- shellcheck scripts/validate-trivy-online.sh; \
+		mise exec -- ./scripts/validate-trivy-online.sh; \
+	else \
+		shellcheck scripts/validate-trivy-online.sh; \
+		./scripts/validate-trivy-online.sh; \
+	fi
+
+validate-observability-online: validate-trivy-online
+	@printf 'ForgePath observability online vulnerability validation passed.\n'
+
+validate-observability-runtime: validate-observability-static
+	@if command -v mise >/dev/null; then \
+		mise exec -- shellcheck scripts/validate-observability-runtime.sh; \
+		mise exec -- ./scripts/validate-observability-runtime.sh; \
+	else \
+		shellcheck scripts/validate-observability-runtime.sh; \
+		./scripts/validate-observability-runtime.sh; \
+	fi
+
 validate-policy:
 	@if command -v mise >/dev/null; then \
 		mise exec -- shellcheck scripts/validate-policy.sh; \
@@ -91,16 +117,16 @@ validate-policy:
 		./scripts/validate-policy.sh; \
 	fi
 
-validate-security: validate-policy validate-kyverno-static
-	@if command -v mise >/dev/null; then \
-		mise exec -- shellcheck scripts/validate-secure-fastapi.sh; \
-		mise exec -- ./scripts/validate-secure-fastapi.sh; \
-	else \
-		shellcheck scripts/validate-secure-fastapi.sh; \
-		./scripts/validate-secure-fastapi.sh; \
-	fi
+validate-security-static: validate-policy validate-kyverno-static validate-secure-fastapi
+	@printf 'ForgePath static security validation passed.\n'
 
-build-trusted-artifact: validate-security
+validate-security-online: validate-security-static validate-trivy-online
+	@printf 'ForgePath online security validation passed.\n'
+
+validate-security: validate-security-online
+	@printf 'ForgePath complete static and online security validation passed.\n'
+
+build-trusted-artifact: validate-security-static
 	@if command -v mise >/dev/null; then \
 		mise exec -- shellcheck scripts/build-trusted-artifact.sh \
 			scripts/validate-trusted-artifact.sh \
