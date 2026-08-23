@@ -38,6 +38,7 @@ flowchart LR
 | Argo CD | Reconcile Git state; self-heal and prune within one restricted AppProject |
 | Argo Rollouts | Keep stable/canary selectors, scale weighted ReplicaSets, and abort failed SLO analysis |
 | Kyverno | Fail closed on non-compliant Kubernetes admission requests |
+| Exception administrator | Manage time-bounded, one-Pod/one-rule PolicyExceptions in a dedicated namespace only |
 | Kubernetes | Run the workload and enforce RBAC/admission decisions |
 
 Backstage does not publish repositories, register remote entities, build or
@@ -70,5 +71,11 @@ imperative Argo CD rollback.
 Kyverno complements the pre-deployment OPA gate. Its independent runtime proof
 admits the compliant chart and rejects privileged, root, mutable-image,
 missing-resource, host-network, and host-PID Pods through the Kubernetes API.
+
+Controlled exceptions do not edit or exclude rules in the policy source. A
+separate platform identity may create a governance-validated PolicyException
+for one exact policy rule and one exact namespaced Pod. Application identities
+cannot create or modify exceptions, adjacent workloads remain covered, and
+removing the exception immediately restores the original denial.
 
 See [the v1 demo](DEMO.md) for the exact sequence and final command.

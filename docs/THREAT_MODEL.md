@@ -12,6 +12,8 @@ the intended ForgePath delivery flow. It does not prescribe controls in detail.
 - Trusted artifacts and provenance entering the artifact store.
 - Git desired state entering the GitOps reconciliation boundary.
 - Argo CD and Kyverno interacting with the Kubernetes API.
+- A platform exception administrator crossing from approved exception metadata
+  into Kyverno's dedicated PolicyException namespace.
 
 ## Major threats
 
@@ -26,12 +28,21 @@ the intended ForgePath delivery flow. It does not prescribe controls in detail.
 - GitOps credentials or controller permissions are abused to change cluster
   state outside the approved scope.
 - Admission controls are bypassed or fail open, allowing non-compliant workloads.
+- A broad, stale, unapproved, or application-controlled exception weakens one or
+  more admission controls beyond its reviewed purpose.
 - Sensitive data is exposed through source, logs, artifacts, or configuration.
 - A local developer portal escapes its output root, publishes unexpectedly, or
   uses overprivileged Kubernetes credentials for status visibility.
 
 The intended posture is least privilege, immutable and verifiable artifacts,
 fail-closed enforcement, and GitOps-only application delivery.
+
+Policy exceptions remain platform-owned and are not part of application GitOps
+delivery. Admission accepts only one exact Pod, namespace, policy, and rule per
+exception, requires owner/justification/approval metadata and a future expiry,
+and rejects wildcard, selector, multi-policy, and multi-rule scope. A dedicated
+namespaced administrator identity manages exceptions; workload identities have
+no exception permissions.
 
 The local Backstage proof confines generation to an ignored repository path,
 uses argument-safe process execution, delegates to the existing renderer, and

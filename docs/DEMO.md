@@ -105,6 +105,30 @@ The harness also runs negative `kubectl auth can-i` checks for Secrets,
 Deployments, Rollouts, AnalysisRuns, Kyverno policies, NetworkPolicies,
 privileged-workload creation, token requests, and identity impersonation.
 
+## Controlled workload-exception demonstration
+
+The exception increment preserves the workload-identity trust model: exception
+administration belongs to a separate platform ServiceAccount in a dedicated
+namespace, while the application ServiceAccount retains zero exception rights.
+
+```sh
+make validate-workload-exceptions-static
+```
+
+After explicit approval for the disposable cluster mutation:
+
+```sh
+make validate-workload-exceptions-runtime
+```
+
+The runtime story is `denied Pod -> approved 30-second exception for one exact
+policy/rule/namespace/Pod -> exact Pod admitted -> neighboring Pod denied ->
+unrelated hostPID control denied -> application patch forbidden -> platform
+exception expires in place -> original Pod denied again -> platform administrator
+removes the expired object`. Non-sensitive
+evidence records owner, justification, approver, approval reference, approval
+time, scheduled expiry, removal time, and the exact affected control/workload.
+
 ## ForgePath v1 demo
 
 This demo tells one story with one service:

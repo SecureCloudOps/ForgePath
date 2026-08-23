@@ -44,6 +44,12 @@ without an automounted token. Controller permissions remain installation-owned
 prerequisites outside the application repository and are bound to separate
 controller ServiceAccounts.
 
+PolicyException is also absent from the allowlist and the AppProject destination
+does not include the dedicated `forgepath-policy-exceptions` namespace. Exception
+administration is a separate platform function with its own namespaced identity;
+an application repository cannot create or modify its policy exceptions through
+Argo CD.
+
 There is one Application and no ApplicationSet because no current fan-out or
 multi-environment requirement exists.
 

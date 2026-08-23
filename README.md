@@ -94,6 +94,8 @@ Choose **Create → Secure FastAPI service**. Output is confined to
 | Namespace protections runtime | `make validate-namespace-protections-runtime` | Disposable Kind proof of service, scrape, and DNS success plus ingress, egress, quota, limit, and restricted-PSA denial |
 | Workload identity static | `make validate-workload-identity-static` | Zero application RBAC grants, disabled token automount, no token projection, and AppProject denial of workload-owned RBAC |
 | Workload identity runtime | `make validate-workload-identity-runtime` | Disposable Kind proof of application API denial, negative `auth can-i` paths, and isolated platform reconciliation |
+| Workload exceptions static | `make validate-workload-exceptions-static` | Required governance/approval metadata, future expiry, exact one-Pod/one-rule scope, wildcard and multi-control rejection, and isolated administrator RBAC |
+| Workload exceptions runtime | `make validate-workload-exceptions-runtime` | Deny → exact narrow allow → neighboring/unrelated denial → application mutation denial → platform removal → deny-again proof |
 | Observability static | `make validate-observability-static` | Prometheus rules, 96.67% degradation fixture, dashboard, Helm resources, and restricted scrape policy |
 | Vulnerability data (online) | `make validate-observability-online` | One cached Trivy DB snapshot followed by update-disabled filesystem and image scans |
 | Observability runtime | `make validate-observability-runtime` | Disposable Kind proof of live scraping, controlled degradation, and fast-burn alert firing |
@@ -160,6 +162,7 @@ completion criterion.
 - [Platform guardrail validation evidence](docs/evidence/PLATFORM_GUARDRAILS.md)
 - [Namespace-isolation validation evidence](docs/evidence/NAMESPACE_ISOLATION.md)
 - [Workload-identity validation evidence](docs/evidence/WORKLOAD_IDENTITY.md)
+- [Workload-exception validation evidence](docs/evidence/WORKLOAD_EXCEPTIONS.md)
 - [Threat model](docs/THREAT_MODEL.md)
 - [GitOps design and rollback](gitops/README.md)
 - [Backstage boundary](platform/backstage/README.md)
