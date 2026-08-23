@@ -5,6 +5,7 @@
 - `/health/live` confirms the process event loop can answer HTTP.
 - `/health/ready` returns 200 only while the application lifespan is ready.
 - `/metrics` exposes request count and latency in Prometheus text format.
+- The SLO rules exclude metrics and health probes from eligible traffic.
 - JSON logs include `request_id`, route, method, status, and duration.
 
 ## Triage
@@ -15,6 +16,9 @@
 4. Confirm NetworkPolicies permit only the intended ingress source.
 5. Roll back to the previous immutable image version through the owning GitOps
    workflow. Do not patch a live workload or reuse an image tag.
+
+See [SLO.md](SLO.md) for the production burn windows and the isolated failure
+fixture procedure.
 
 ## Graceful termination
 

@@ -1,0 +1,99 @@
+{{- if .Values.monitoring.enabled }}
+{{- $budgetWindow := "30d" -}}
+{{- $fastLong := "1h" -}}
+{{- $fastShort := "5m" -}}
+{{- $mediumLong := "6h" -}}
+{{- $mediumShort := "30m" -}}
+{{- $slowLong := "1d" -}}
+{{- $slowShort := "2h" -}}
+{{- $verySlowLong := "3d" -}}
+{{- $verySlowShort := "6h" -}}
+{{- if eq .Values.monitoring.slo.windowProfile "demo" -}}
+{{- $budgetWindow = "1h" -}}
+{{- $fastLong = "5m" -}}
+{{- $fastShort = "1m" -}}
+{{- $mediumLong = "15m" -}}
+{{- $mediumShort = "3m" -}}
+{{- $slowLong = "30m" -}}
+{{- $slowShort = "5m" -}}
+{{- $verySlowLong = "1h" -}}
+{{- $verySlowShort = "10m" -}}
+{{- end -}}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "service.fullname" . }}-slo
+  labels:
+    {{- include "service.labels" . | nindent 4 }}
+spec:
+  groups:
+    - name: {{ include "service.fullname" . }}.sli
+      interval: 30s
+      rules:
+        - record: forgepath:sli_requests:rate5m
+          expr: sum(rate(http_requests_total{forgepath_service={{ include "service.fullname" . | quote }},path!~"/metrics|/health/live|/health/ready"}[5m]))
+          labels:
+            forgepath_service: {{ include "service.fullname" . | quote }}
+        - record: forgepath:sli_errors:rate5m
+          expr: sum(rate(http_requests_total{forgepath_service={{ include "service.fullname" . | quote }},path!~"/metrics|/health/live|/health/ready",status_code=~"5.."}[5m])) or vector(0)
+          labels:
+            forgepath_service: {{ include "service.fullname" . | quote }}
+        - record: forgepath:sli_availability:ratio_rate5m
+          expr: 1 - (forgepath:sli_errors:rate5m{forgepath_service={{ include "service.fullname" . | quote }}} / clamp_min(forgepath:sli_requests:rate5m{forgepath_service={{ include "service.fullname" . | quote }}}, 1e-12))
+          labels:
+            forgepath_service: {{ include "service.fullname" . | quote }}
+        - record: forgepath:sli_latency_under_300ms:ratio_rate5m
+          expr: (sum(rate(http_request_duration_seconds_bucket{forgepath_service={{ include "service.fullname" . | quote }},path!~"/metrics|/health/live|/health/ready",le="0.3"}[5m]))) / clamp_min(sum(rate(http_request_duration_seconds_count{forgepath_service={{ include "service.fullname" . | quote }},path!~"/metrics|/health/live|/health/ready"}[5m])), 1e-12)
+          labels:
+            forgepath_service: {{ include "service.fullname" . | quote }}
+        - record: forgepath:slo_availability:target
+          expr: vector({{ .Values.monitoring.slo.availabilityTarget }})
+          labels:
+            forgepath_service: {{ include "service.fullname" . | quote }}
+        - record: forgepath:slo_error_budget_remaining:ratio
+          expr: clamp_max(clamp_min(1 - (((sum(increase(http_requests_total{forgepath_service={{ include "service.fullname" . | quote }},path!~"/metrics|/health/live|/health/ready",status_code=~"5.."}[{{ $budgetWindow }}])) or vector(0)) / clamp_min(sum(increase(http_requests_total{forgepath_service={{ include "service.fullname" . | quote }},path!~"/metrics|/health/live|/health/ready"}[{{ $budgetWindow }}])), 1)) / (1 - {{ .Values.monitoring.slo.availabilityTarget }})), 1), 0)
+          labels:
+            forgepath_service: {{ include "service.fullname" . | quote }}
+            window: {{ $budgetWindow | quote }}
+    - name: {{ include "service.fullname" . }}.burn-rate
+      interval: 30s
+      rules:
+        {{- range $window := (list $fastShort $fastLong $mediumShort $mediumLong $slowShort $slowLong $verySlowShort $verySlowLong | uniq) }}
+        - record: forgepath:slo_availability_burn_rate
+          expr: ((sum(rate(http_requests_total{forgepath_service={{ include "service.fullname" $ | quote }},path!~"/metrics|/health/live|/health/ready",status_code=~"5.."}[{{ $window }}])) or vector(0)) / clamp_min(sum(rate(http_requests_total{forgepath_service={{ include "service.fullname" $ | quote }},path!~"/metrics|/health/live|/health/ready"}[{{ $window }}])), 1e-12)) / (1 - {{ $.Values.monitoring.slo.availabilityTarget }})
+          labels:
+            forgepath_service: {{ include "service.fullname" $ | quote }}
+            window: {{ $window | quote }}
+        {{- end }}
+    - name: {{ include "service.fullname" . }}.alerts
+      interval: 30s
+      rules:
+        - alert: ForgePathSLOFastBurn
+          expr: forgepath:slo_availability_burn_rate{forgepath_service={{ include "service.fullname" . | quote }},window={{ $fastLong | quote }}} > 14.4 and on(forgepath_service) forgepath:slo_availability_burn_rate{forgepath_service={{ include "service.fullname" . | quote }},window={{ $fastShort | quote }}} > 14.4
+          for: 2m
+          labels:
+            severity: page
+          annotations:
+            summary: Availability error budget is burning at least 14.4x
+        - alert: ForgePathSLOMediumBurn
+          expr: forgepath:slo_availability_burn_rate{forgepath_service={{ include "service.fullname" . | quote }},window={{ $mediumLong | quote }}} > 6 and on(forgepath_service) forgepath:slo_availability_burn_rate{forgepath_service={{ include "service.fullname" . | quote }},window={{ $mediumShort | quote }}} > 6
+          for: 2m
+          labels:
+            severity: page
+          annotations:
+            summary: Availability error budget is burning at least 6x
+        - alert: ForgePathSLOSlowBurn
+          expr: forgepath:slo_availability_burn_rate{forgepath_service={{ include "service.fullname" . | quote }},window={{ $slowLong | quote }}} > 3 and on(forgepath_service) forgepath:slo_availability_burn_rate{forgepath_service={{ include "service.fullname" . | quote }},window={{ $slowShort | quote }}} > 3
+          for: 5m
+          labels:
+            severity: ticket
+          annotations:
+            summary: Availability error budget is burning at least 3x
+        - alert: ForgePathSLOVerySlowBurn
+          expr: forgepath:slo_availability_burn_rate{forgepath_service={{ include "service.fullname" . | quote }},window={{ $verySlowLong | quote }}} > 1 and on(forgepath_service) forgepath:slo_availability_burn_rate{forgepath_service={{ include "service.fullname" . | quote }},window={{ $verySlowShort | quote }}} > 1
+          for: 5m
+          labels:
+            severity: ticket
+          annotations:
+            summary: Availability error budget is burning faster than sustainable
+{{- end }}

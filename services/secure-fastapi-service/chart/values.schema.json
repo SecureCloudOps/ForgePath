@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "additionalProperties": false,
-  "required": ["replicaCount", "image", "service", "resources", "networkPolicy"],
+  "required": ["replicaCount", "image", "service", "failureFixture", "monitoring", "resources", "networkPolicy"],
   "properties": {
     "replicaCount": {"type": "integer", "minimum": 1},
     "image": {
@@ -24,6 +24,57 @@
       "required": ["port"],
       "properties": {"port": {"type": "integer", "minimum": 1, "maximum": 65535}}
     },
+    "failureFixture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled"],
+      "properties": {"enabled": {"type": "boolean"}}
+    },
+    "monitoring": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "serviceMonitor", "prometheusAccess", "slo", "grafana"],
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "serviceMonitor": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["interval", "scrapeTimeout"],
+          "properties": {
+            "interval": {"$ref": "#/$defs/duration"},
+            "scrapeTimeout": {"$ref": "#/$defs/duration"}
+          }
+        },
+        "prometheusAccess": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["namespaceSelector", "podSelector"],
+          "properties": {
+            "namespaceSelector": {"$ref": "#/$defs/selector"},
+            "podSelector": {"$ref": "#/$defs/selector"}
+          }
+        },
+        "slo": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["availabilityTarget", "latencyThresholdSeconds", "windowProfile"],
+          "properties": {
+            "availabilityTarget": {"type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 1},
+            "latencyThresholdSeconds": {"const": 0.3},
+            "windowProfile": {"enum": ["production", "demo"]}
+          }
+        },
+        "grafana": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["dashboardLabel", "dashboardLabelValue"],
+          "properties": {
+            "dashboardLabel": {"type": "string", "minLength": 1},
+            "dashboardLabelValue": {"type": "string", "minLength": 1}
+          }
+        }
+      }
+    },
     "resources": {
       "type": "object",
       "additionalProperties": false,
@@ -44,6 +95,22 @@
     }
   },
   "$defs": {
+    "duration": {
+      "type": "string",
+      "pattern": "^[1-9][0-9]*(ms|s|m|h)$"
+    },
+    "selector": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["matchLabels"],
+      "properties": {
+        "matchLabels": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {"type": "string", "minLength": 1}
+        }
+      }
+    },
     "resourcePair": {
       "type": "object",
       "additionalProperties": false,

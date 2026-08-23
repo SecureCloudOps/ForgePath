@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import logging
+import os
 import time
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, HTTPException, Request, Response
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
 
 from app.logging import configure_logging, request_id_context
@@ -18,7 +19,12 @@ logger = logging.getLogger(__name__)
 REQUESTS = Counter(
     "http_requests_total", "HTTP requests", ("method", "path", "status_code")
 )
-LATENCY = Histogram("http_request_duration_seconds", "HTTP request duration")
+LATENCY = Histogram(
+    "http_request_duration_seconds",
+    "HTTP request duration",
+    ("method", "path", "status_code"),
+    buckets=(0.05, 0.1, 0.2, 0.3, 0.5, 1.0, 2.0, 5.0),
+)
 
 
 @asynccontextmanager
@@ -53,7 +59,7 @@ async def request_context(
         route = request.scope.get("route")
         path = getattr(route, "path", request.url.path)
         REQUESTS.labels(request.method, path, str(status_code)).inc()
-        LATENCY.observe(duration)
+        LATENCY.labels(request.method, path, str(status_code)).observe(duration)
         logger.info(
             "request_complete",
             extra={
@@ -82,3 +88,10 @@ async def ready(request: Request, response: Response) -> dict[str, str]:
 @app.get("/metrics", include_in_schema=False)
 async def metrics() -> Response:
     return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+
+@app.get("/_test/failure", include_in_schema=False)
+async def controlled_failure() -> None:
+    if os.getenv("FORGEPATH_FAILURE_FIXTURE_ENABLED") != "true":
+        raise HTTPException(status_code=404, detail="not found")
+    raise HTTPException(status_code=503, detail="controlled SLO failure")

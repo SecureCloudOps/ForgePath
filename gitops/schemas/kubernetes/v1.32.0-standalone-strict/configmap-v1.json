@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["apiVersion", "kind", "metadata"],
+  "properties": {
+    "apiVersion": {"const": "v1"},
+    "kind": {"const": "ConfigMap"},
+    "metadata": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "namespace": {"type": "string"},
+        "labels": {"type": "object"},
+        "annotations": {"type": "object"}
+      },
+      "additionalProperties": true
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": {"type": "string"}
+    },
+    "binaryData": {
+      "type": "object",
+      "additionalProperties": {"type": "string"}
+    },
+    "immutable": {"type": "boolean"}
+  }
+}

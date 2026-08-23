@@ -3,7 +3,9 @@
 The container runs as a non-root user with privilege escalation disabled, a
 read-only root filesystem, all Linux capabilities dropped, RuntimeDefault
 seccomp, resource requests and limits, and health probes. Its service account
-does not automount a Kubernetes token. Network access starts from default deny.
+does not automount a Kubernetes token. Network access starts from default deny;
+the only default ingress exception is TCP 8080 from pods matching both the
+configured Prometheus namespace and pod selectors.
 
 Backstage runtime visibility uses a separate identity. That identity may only
 `get`, `list`, and `watch` the selected workload objects and the matching Argo

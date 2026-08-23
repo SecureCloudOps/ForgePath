@@ -38,6 +38,11 @@ spec:
             - name: http
               containerPort: 8080
               protocol: TCP
+          {{- if .Values.failureFixture.enabled }}
+          env:
+            - name: FORGEPATH_FAILURE_FIXTURE_ENABLED
+              value: "true"
+          {{- end }}
           livenessProbe:
             httpGet:
               path: /health/live

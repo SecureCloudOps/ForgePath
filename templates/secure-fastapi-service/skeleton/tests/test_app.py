@@ -2,6 +2,7 @@ import json
 import logging
 
 from fastapi.testclient import TestClient
+from pytest import MonkeyPatch
 
 from app.logging import JsonFormatter, request_id_context
 from app.main import app
@@ -32,6 +33,28 @@ def test_metrics_are_prometheus_text() -> None:
     assert response.status_code == 200
     assert "http_requests_total" in response.text
     assert response.headers["content-type"].startswith("text/plain")
+
+
+def test_controlled_failure_fixture_is_disabled_by_default() -> None:
+    with TestClient(app) as client:
+        assert client.get("/_test/failure").status_code == 404
+
+
+def test_controlled_failure_fixture_emits_eligible_503(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("FORGEPATH_FAILURE_FIXTURE_ENABLED", "true")
+    with TestClient(app) as client:
+        assert client.get("/_test/failure").status_code == 503
+        metrics = client.get("/metrics").text
+    assert (
+        'http_requests_total{method="GET",path="/_test/failure",status_code="503"}'
+        in metrics
+    )
+    assert (
+        'http_request_duration_seconds_count{method="GET",path="/_test/failure",status_code="503"}'
+        in metrics
+    )
 
 
 def test_log_formatter_emits_json_with_request_id() -> None:

@@ -1,0 +1,34 @@
+rule_files:
+  - prometheus-rules.yaml
+
+evaluation_interval: 30s
+
+tests:
+  - name: sustained eligible 503 responses consume budget and page
+    interval: 30s
+    input_series:
+      - series: 'http_requests_total{forgepath_service="validation-example-fastapi",method="GET",path="/_test/failure",status_code="200"}'
+        values: '0+29x140'
+      - series: 'http_requests_total{forgepath_service="validation-example-fastapi",method="GET",path="/_test/failure",status_code="503"}'
+        values: '0+1x140'
+    promql_expr_test:
+      - expr: 'forgepath:sli_availability:ratio_rate5m{forgepath_service="validation-example-fastapi"}'
+        eval_time: 10m
+        exp_samples:
+          - labels: 'forgepath:sli_availability:ratio_rate5m{forgepath_service="validation-example-fastapi"}'
+            value: 0.9666666666666667
+      - expr: 'forgepath:slo_error_budget_remaining:ratio{forgepath_service="validation-example-fastapi"}'
+        eval_time: 10m
+        exp_samples:
+          - labels: 'forgepath:slo_error_budget_remaining:ratio{forgepath_service="validation-example-fastapi",window="30d"}'
+            value: 0
+    alert_rule_test:
+      - alertname: ForgePathSLOFastBurn
+        eval_time: 65m
+        exp_alerts:
+          - exp_labels:
+              forgepath_service: validation-example-fastapi
+              severity: page
+              window: 1h
+            exp_annotations:
+              summary: Availability error budget is burning at least 14.4x

@@ -50,9 +50,11 @@ validate_argocd() {
       .metadata.namespace == "argocd" and
       .spec.sourceRepos == [$repo] and
       .spec.destinations == [{"namespace": $namespace, "server": $server}] and
-      (.spec.namespaceResourceWhitelist | length) == 4 and
+      (.spec.namespaceResourceWhitelist | length) == 7 and
       ([.spec.namespaceResourceWhitelist[] | [.group, .kind]] | sort) ==
-        [["", "Service"], ["", "ServiceAccount"], ["apps", "Deployment"], ["networking.k8s.io", "NetworkPolicy"]] and
+        [["", "ConfigMap"], ["", "Service"], ["", "ServiceAccount"], ["apps", "Deployment"],
+         ["monitoring.coreos.com", "PrometheusRule"], ["monitoring.coreos.com", "ServiceMonitor"],
+         ["networking.k8s.io", "NetworkPolicy"]] and
       .spec.clusterResourceBlacklist == [{"group": "*", "kind": "*"}] and
       (.spec.clusterResourceWhitelist == null)
     ' >/dev/null || return 1
@@ -121,11 +123,13 @@ authorize_rendered() {
   fi
 
   if ! jq -se --arg namespace "$intended_namespace" '
-    length == 4 and
+    length == 8 and
     all(.[ ]; .apiVersion and .kind and .metadata.name) and
     all(.[ ]; (.metadata.namespace // $namespace) == $namespace) and
     ([.[] | [(.apiVersion | split("/") | if length == 1 then "" else .[0] end), .kind]] | sort) ==
-      [["", "Service"], ["", "ServiceAccount"], ["apps", "Deployment"], ["networking.k8s.io", "NetworkPolicy"]]
+      [["", "ConfigMap"], ["", "Service"], ["", "ServiceAccount"], ["apps", "Deployment"],
+       ["monitoring.coreos.com", "PrometheusRule"], ["monitoring.coreos.com", "ServiceMonitor"],
+       ["networking.k8s.io", "NetworkPolicy"], ["networking.k8s.io", "NetworkPolicy"]]
   ' <<<"$documents" >/dev/null; then
     printf 'rendered resources exceed the AppProject namespace/kind allowlist\n' >&2
     return 1
@@ -180,6 +184,7 @@ render_and_validate() {
   helm template secure-fastapi-service "$chart" \
     --namespace "$intended_namespace" --values "$candidate_values" >"$output"
   kubeconform -exit-on-error -strict -summary \
+    -skip PrometheusRule,ServiceMonitor \
     -schema-location "file://$schema_directory/{{.ResourceKind}}{{.KindSuffix}}.json" \
     "$output" >/dev/null || return 1
   conftest test --combine --policy policies "$output" >/dev/null || return 1

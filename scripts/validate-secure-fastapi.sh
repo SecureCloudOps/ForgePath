@@ -7,7 +7,7 @@ cd "$repository_root"
 
 python_bin="${PYTHON_BIN:-python3.12}"
 
-for tool in "$python_bin" docker gitleaks helm jq kubeconform rg semgrep trivy yq; do
+for tool in "$python_bin" docker gitleaks helm jq kubeconform promtool rg semgrep trivy yq; do
   if ! command -v "$tool" >/dev/null; then
     printf 'required tool not found: %s\n' "$tool" >&2
     exit 1
@@ -148,8 +148,16 @@ if helm lint "$rendered/chart" --set image.digest=latest >/dev/null 2>&1; then
 fi
 helm template validation "$rendered/chart" >"$work_directory/manifests.yaml"
 
+yq -o=yaml 'select(.kind == "PrometheusRule") | {"groups": .spec.groups}' \
+  "$work_directory/manifests.yaml" >"$rendered/tests/prometheus-rules.yaml"
+promtool check rules "$rendered/tests/prometheus-rules.yaml"
+(
+  cd "$rendered/tests"
+  promtool test rules prometheus-rules.test.yaml
+)
+
 kubeconform -cache "$schema_cache" -exit-on-error -kubernetes-version 1.32.0 \
-  -strict -summary "$work_directory/manifests.yaml"
+  -strict -skip PrometheusRule,ServiceMonitor -summary "$work_directory/manifests.yaml"
 expect_exit_one "schema-invalid Kubernetes fixture" kubeconform \
   -cache "$schema_cache" -exit-on-error -kubernetes-version 1.32.0 \
   -strict tests/security/fixtures/invalid-manifest.yaml
@@ -177,13 +185,24 @@ rendered_kinds="$(
   yq -o=json -I=0 'select(. != null)' "$work_directory/manifests.yaml" \
     | jq -r '.kind' | sort
 )"
-expected_kinds="$(printf '%s\n' Deployment NetworkPolicy Service ServiceAccount | sort)"
+expected_kinds="$(printf '%s\n' ConfigMap Deployment NetworkPolicy NetworkPolicy PrometheusRule Service ServiceAccount ServiceMonitor | sort)"
 if [[ "$rendered_kinds" != "$expected_kinds" ]]; then
   printf 'unexpected rendered Kubernetes resource set:\n%s\n' "$rendered_kinds" >&2
   exit 1
 fi
 
 deployment_json="$(yq -o=json 'select(.kind == "Deployment")' "$work_directory/manifests.yaml")"
+default_deny_network_policy_json="$(
+  yq -o=json 'select(.kind == "NetworkPolicy" and (.metadata.name | test("-default-deny$")))' \
+    "$work_directory/manifests.yaml"
+)"
+allow_ingress_network_policy_json="$(
+  yq -o=json 'select(.kind == "NetworkPolicy" and (.metadata.name | test("-allow-ingress$")))' \
+    "$work_directory/manifests.yaml"
+)"
+service_monitor_json="$(yq -o=json 'select(.kind == "ServiceMonitor")' "$work_directory/manifests.yaml")"
+prometheus_rule_json="$(yq -o=json 'select(.kind == "PrometheusRule")' "$work_directory/manifests.yaml")"
+dashboard_json="$(yq -r 'select(.kind == "ConfigMap") | .data."slo-dashboard.json"' "$work_directory/manifests.yaml")"
 
 jq -e '
   .spec.template.spec.securityContext.runAsUser == 10001 and
@@ -192,6 +211,78 @@ jq -e '
   .spec.template.spec.containers[0].livenessProbe.httpGet.path == "/health/live" and
   .spec.template.spec.containers[0].readinessProbe.httpGet.path == "/health/ready"
 ' <<<"$deployment_json" >/dev/null
+
+jq -e '
+  .spec.policyTypes == ["Ingress", "Egress"] and
+  .spec.ingress == [] and
+  .spec.egress == []
+' <<<"$default_deny_network_policy_json" >/dev/null
+jq -e '
+  .spec.ingress as $ingress |
+  ($ingress | length) == 1 and
+  ($ingress[0].from | length) == 1 and
+  $ingress[0].from[0].namespaceSelector.matchLabels["kubernetes.io/metadata.name"] == "monitoring" and
+  $ingress[0].from[0].podSelector.matchLabels["app.kubernetes.io/name"] == "prometheus" and
+  $ingress[0].ports == [{"protocol": "TCP", "port": 8080}]
+' <<<"$allow_ingress_network_policy_json" >/dev/null
+jq -e '
+  .spec.endpoints | length == 1 and
+  .spec.endpoints[0].path == "/metrics" and
+  .spec.endpoints[0].port == "http" and
+  .spec.endpoints[0].relabelings[0].targetLabel == "forgepath_service"
+' <<<"$service_monitor_json" >/dev/null
+jq -e '
+  [.spec.groups[].rules[] | select(.record != null) | .record] |
+    index("forgepath:sli_availability:ratio_rate5m") != null and
+    index("forgepath:sli_latency_under_300ms:ratio_rate5m") != null and
+    index("forgepath:slo_error_budget_remaining:ratio") != null and
+    index("forgepath:slo_availability_burn_rate") != null
+' <<<"$prometheus_rule_json" >/dev/null
+jq -e '
+  .title == "validation-example-fastapi service SLO" and
+  [.panels[].title] == [
+    "Traffic", "Errors", "Latency", "CPU saturation", "Memory saturation",
+    "Availability error budget remaining", "Availability SLI", "Latency SLI"
+  ]
+' <<<"$dashboard_json" >/dev/null
+
+helm template validation "$rendered/chart" --set monitoring.enabled=false \
+  >"$work_directory/monitoring-disabled.yaml"
+disabled_kinds="$(
+  yq -o=json -I=0 'select(. != null)' "$work_directory/monitoring-disabled.yaml" \
+    | jq -r '.kind' | sort
+)"
+disabled_expected="$(printf '%s\n' Deployment NetworkPolicy Service ServiceAccount | sort)"
+if [[ "$disabled_kinds" != "$disabled_expected" ]]; then
+  printf 'monitoring-disabled render has unexpected resources:\n%s\n' "$disabled_kinds" >&2
+  exit 1
+fi
+disabled_network_policy_json="$(
+  yq -o=json 'select(.kind == "NetworkPolicy" and (.metadata.name | test("-default-deny$")))' \
+    "$work_directory/monitoring-disabled.yaml"
+)"
+jq -e '.spec.ingress == []' <<<"$disabled_network_policy_json" >/dev/null
+
+helm template validation "$rendered/chart" \
+  --set failureFixture.enabled=true \
+  --set monitoring.slo.windowProfile=demo \
+  >"$work_directory/demo.yaml"
+demo_deployment_json="$(
+  yq -o=json 'select(.kind == "Deployment")' "$work_directory/demo.yaml"
+)"
+demo_prometheus_rule_json="$(
+  yq -o=json 'select(.kind == "PrometheusRule")' "$work_directory/demo.yaml"
+)"
+jq -e '
+  .spec.template.spec.containers[0].env == [
+    {"name": "FORGEPATH_FAILURE_FIXTURE_ENABLED", "value": "true"}
+  ]
+' <<<"$demo_deployment_json" >/dev/null
+jq -e '
+  ([.spec.groups[].rules[] | select(.record == "forgepath:slo_availability_burn_rate") | .labels.window] | index("1m") != null) and
+  ([.spec.groups[].rules[] | select(.record == "forgepath:slo_availability_burn_rate") | .labels.window] | index("10m") != null) and
+  ([.spec.groups[].rules[] | select(.record == "forgepath:slo_error_budget_remaining:ratio") | .labels.window] == ["1h"])
+' <<<"$demo_prometheus_rule_json" >/dev/null
 
 jq -e '
   .metadata.name == "example-fastapi" and
@@ -210,7 +301,7 @@ yq -e '.site_name and .docs_dir == "docs" and .plugins[] == "techdocs-core"' \
 jq -e '.type == "object" and .properties.image.properties.digest.pattern == "^sha256:[a-f0-9]{64}$"' \
   "$rendered/chart/values.schema.json" >/dev/null
 
-for document in README.md docs/index.md docs/RUNBOOK.md docs/SECURITY.md catalog-info.yaml mkdocs.yml; do
+for document in README.md docs/index.md docs/RUNBOOK.md docs/SECURITY.md docs/SLO.md catalog-info.yaml mkdocs.yml; do
   test -s "$rendered/$document"
 done
 

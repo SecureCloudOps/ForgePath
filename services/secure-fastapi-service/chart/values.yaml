@@ -8,6 +8,29 @@ image:
 service:
   port: 80
 
+failureFixture:
+  enabled: false
+
+monitoring:
+  enabled: true
+  serviceMonitor:
+    interval: 30s
+    scrapeTimeout: 5s
+  prometheusAccess:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: monitoring
+    podSelector:
+      matchLabels:
+        app.kubernetes.io/name: prometheus
+  slo:
+    availabilityTarget: 0.999
+    latencyThresholdSeconds: 0.3
+    windowProfile: production
+  grafana:
+    dashboardLabel: grafana_dashboard
+    dashboardLabelValue: "1"
+
 resources:
   requests:
     cpu: 100m

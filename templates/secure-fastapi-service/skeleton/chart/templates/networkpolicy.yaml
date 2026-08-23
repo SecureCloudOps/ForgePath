@@ -12,15 +12,5 @@ spec:
   policyTypes:
     - Ingress
     - Egress
-  {{- if .Values.networkPolicy.allowIngress }}
-  ingress:
-    - from:
-        - namespaceSelector:
-            {{- toYaml .Values.networkPolicy.ingressNamespaceSelector | nindent 12 }}
-      ports:
-        - protocol: TCP
-          port: 8080
-  {{- else }}
   ingress: []
-  {{- end }}
   egress: []
