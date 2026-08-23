@@ -147,6 +147,17 @@ authorize_rendered() {
     printf 'rendered image does not exactly match the trusted immutable reference\n' >&2
     return 1
   fi
+
+  if ! jq -se '
+    [.[] | select(.kind == "AnalysisTemplate") |
+      .spec.metrics[] | select(.name == "availability-burn-rate")] as $metrics |
+    ($metrics | length) == 1 and
+    all($metrics[];
+      .count == 1 and .failureLimit == 0 and .consecutiveErrorLimit == 0)
+  ' <<<"$documents" >/dev/null; then
+    printf 'availability analysis must fail closed on its first failed or errored measurement\n' >&2
+    return 1
+  fi
 }
 
 render_and_validate() {
