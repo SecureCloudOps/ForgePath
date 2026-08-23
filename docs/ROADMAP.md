@@ -40,7 +40,10 @@ ForgePath will be built in small, demonstrable increments:
     Complete, runtime-proven, and frozen. See the
     [workload-identity validation evidence](evidence/WORKLOAD_IDENTITY.md).
 17. Add the time-bounded, owner-approved, narrowly scoped exception mechanism
-    with expiry failure tests.
+    with expiry failure tests. Complete and runtime-proven. See the
+    [workload-exception validation evidence](evidence/WORKLOAD_EXCEPTIONS.md).
+    Source checkpoint: `e0e97bb7b625bb8dda49e227dd20abeefbbdc153`.
+    Evidence checkpoint: `b1192319d4fe3746f1d411f0d047b188597c3140`.
 
 Details will be designed only when each increment begins. The project will favor
 one complete, secure path over broad platform scope.
