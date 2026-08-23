@@ -8,6 +8,7 @@
 	validate-progressive-delivery-runtime validate-progressive-delivery-static validate-security \
 	validate-security-online validate-security-static validate-trivy-online \
 	validate-trusted-artifact validate-v1 validate-v1-static \
+	validate-workload-exceptions-runtime validate-workload-exceptions-static \
 	validate-workload-identity-runtime validate-workload-identity-static
 
 validate-v1: validate-foundation validate-trusted-artifact validate-backstage-runtime \
@@ -84,6 +85,24 @@ validate-workload-identity-runtime: validate-workload-identity-static validate-t
 	else \
 		shellcheck scripts/validate-workload-identity-runtime.sh; \
 		./scripts/validate-workload-identity-runtime.sh; \
+	fi
+
+validate-workload-exceptions-static: validate-workload-identity-static
+	@if command -v mise >/dev/null; then \
+		mise exec -- shellcheck scripts/validate-workload-exceptions-static.sh; \
+		mise exec -- ./scripts/validate-workload-exceptions-static.sh; \
+	else \
+		shellcheck scripts/validate-workload-exceptions-static.sh; \
+		./scripts/validate-workload-exceptions-static.sh; \
+	fi
+
+validate-workload-exceptions-runtime: validate-workload-exceptions-static
+	@if command -v mise >/dev/null; then \
+		mise exec -- shellcheck scripts/validate-workload-exceptions-runtime.sh; \
+		mise exec -- ./scripts/validate-workload-exceptions-runtime.sh; \
+	else \
+		shellcheck scripts/validate-workload-exceptions-runtime.sh; \
+		./scripts/validate-workload-exceptions-runtime.sh; \
 	fi
 
 validate-gitops-runtime: validate-gitops-static
@@ -171,7 +190,8 @@ validate-policy:
 		./scripts/validate-policy.sh; \
 	fi
 
-validate-security-static: validate-policy validate-kyverno-static validate-secure-fastapi
+validate-security-static: validate-policy validate-kyverno-static validate-secure-fastapi \
+	validate-workload-exceptions-static
 	@printf 'ForgePath static security validation passed.\n'
 
 validate-security-online: validate-security-static validate-trivy-online

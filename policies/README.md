@@ -40,6 +40,37 @@ Run the offline Kyverno CLI suite with:
 make validate-kyverno-static
 ```
 
+## Controlled policy exceptions
+
+Policy exceptions are disabled unless the platform installation explicitly
+enables them and pins Kyverno's `exceptionNamespace` to
+`forgepath-policy-exceptions`. Exception resources live only in that namespace;
+the application AppProject cannot deliver them. The platform-owned
+`forgepath-policy-exception-admin` ServiceAccount receives namespaced CRUD only
+for `policyexceptions.kyverno.io` and no workload or policy-authoring rights.
+
+`exceptions/exception-boundary.yaml` admits only one exact `PolicyException`
+shape: one exact ClusterPolicy name, one exact rule name, and one exact Pod name
+in one exact namespace. It rejects wildcard, selector, subject, multi-policy,
+and multi-rule scope. Owner, justification, workload/namespace binding, future
+RFC3339 expiry, approver, approval time, and approval reference are mandatory.
+The exception must also carry a time condition bound to that same timestamp, so
+it stops matching even if its object remains. The boundary is admission-only
+because it evaluates request time and fails closed on creation or update;
+deletion remains available after expiry.
+
+```sh
+make validate-workload-exceptions-static
+```
+
+After explicit approval for a disposable cluster, the runtime proof enables
+Kyverno exceptions only in the dedicated namespace and runs the complete
+deny/allow/isolation/removal/deny sequence:
+
+```sh
+make validate-workload-exceptions-runtime
+```
+
 This is additive defense in depth: OPA/Conftest remains the pre-deployment CI
 gate, Argo CD remains the desired-state reconciler, and Kyverno is the runtime
 Kubernetes admission layer. Installation version, artifact checksum, and image

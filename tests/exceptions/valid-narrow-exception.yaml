@@ -1,0 +1,34 @@
+apiVersion: kyverno.io/v2
+kind: PolicyException
+metadata:
+  name: allow-exempted-pod-host-network
+  namespace: forgepath-policy-exceptions
+  annotations:
+    forgepath.dev/exception-owner: platform-security
+    forgepath.dev/exception-justification: Temporary compatibility test for one named workload.
+    forgepath.dev/exception-workload: exempted-pod
+    forgepath.dev/exception-namespace: forgepath-exception-test
+    forgepath.dev/exception-expires-at: "2099-12-31T23:59:59Z"
+    forgepath.dev/exception-approved-by: platform-security-reviewer
+    forgepath.dev/exception-approved-at: "2026-08-23T18:00:00Z"
+    forgepath.dev/exception-approval-reference: FORGEPATH-EXC-0001
+spec:
+  background: false
+  conditions:
+    all:
+      - key: "{{ time_before(time_now_utc(), '2099-12-31T23:59:59Z') }}"
+        operator: Equals
+        value: true
+  exceptions:
+    - policyName: forgepath-workload-security
+      ruleNames:
+        - forbid-host-network
+  match:
+    any:
+      - resources:
+          kinds:
+            - Pod
+          names:
+            - exempted-pod
+          namespaces:
+            - forgepath-exception-test
