@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "additionalProperties": false,
-  "required": ["replicaCount", "image", "service", "failureFixture", "progressiveDelivery", "monitoring", "resources", "networkPolicy"],
+  "required": ["replicaCount", "image", "service", "failureFixture", "progressiveDelivery", "monitoring", "resources", "namespaceProtection", "networkPolicy"],
   "properties": {
     "replicaCount": {"type": "integer", "minimum": 20, "multipleOf": 20},
     "image": {
@@ -103,13 +103,68 @@
         "limits": {"$ref": "#/$defs/resourcePair"}
       }
     },
+    "namespaceProtection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["resourceQuota", "limitRange"],
+      "properties": {
+        "resourceQuota": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["requestsCpu", "requestsMemory", "limitsCpu", "limitsMemory", "pods", "services", "configMaps"],
+          "properties": {
+            "requestsCpu": {"$ref": "#/$defs/quantity"},
+            "requestsMemory": {"$ref": "#/$defs/quantity"},
+            "limitsCpu": {"$ref": "#/$defs/quantity"},
+            "limitsMemory": {"$ref": "#/$defs/quantity"},
+            "pods": {"$ref": "#/$defs/quantity"},
+            "services": {"$ref": "#/$defs/quantity"},
+            "configMaps": {"$ref": "#/$defs/quantity"}
+          }
+        },
+        "limitRange": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["defaultRequestCpu", "defaultRequestMemory", "defaultCpu", "defaultMemory", "minCpu", "minMemory", "maxCpu", "maxMemory", "maxCpuLimitRequestRatio", "maxMemoryLimitRequestRatio"],
+          "properties": {
+            "defaultRequestCpu": {"$ref": "#/$defs/quantity"},
+            "defaultRequestMemory": {"$ref": "#/$defs/quantity"},
+            "defaultCpu": {"$ref": "#/$defs/quantity"},
+            "defaultMemory": {"$ref": "#/$defs/quantity"},
+            "minCpu": {"$ref": "#/$defs/quantity"},
+            "minMemory": {"$ref": "#/$defs/quantity"},
+            "maxCpu": {"$ref": "#/$defs/quantity"},
+            "maxMemory": {"$ref": "#/$defs/quantity"},
+            "maxCpuLimitRequestRatio": {"$ref": "#/$defs/quantity"},
+            "maxMemoryLimitRequestRatio": {"$ref": "#/$defs/quantity"}
+          }
+        }
+      }
+    },
     "networkPolicy": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["allowIngress", "ingressNamespaceSelector"],
+      "required": ["applicationIngress", "dnsEgress"],
       "properties": {
-        "allowIngress": {"type": "boolean"},
-        "ingressNamespaceSelector": {"type": "object"}
+        "applicationIngress": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled", "namespaceSelector", "podSelector"],
+          "properties": {
+            "enabled": {"type": "boolean"},
+            "namespaceSelector": {"$ref": "#/$defs/selector"},
+            "podSelector": {"$ref": "#/$defs/selector"}
+          }
+        },
+        "dnsEgress": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["namespaceSelector", "podSelector"],
+          "properties": {
+            "namespaceSelector": {"$ref": "#/$defs/selector"},
+            "podSelector": {"$ref": "#/$defs/selector"}
+          }
+        }
       }
     }
   },
@@ -117,6 +172,10 @@
     "duration": {
       "type": "string",
       "pattern": "^[1-9][0-9]*(ms|s|m|h)$"
+    },
+    "quantity": {
+      "type": "string",
+      "pattern": "^[0-9]+(m|Ki|Mi|Gi|Ti|Pi|Ei)?$"
     },
     "selector": {
       "type": "object",

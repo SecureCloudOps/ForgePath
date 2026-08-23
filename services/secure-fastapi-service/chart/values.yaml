@@ -47,6 +47,40 @@ resources:
     cpu: 500m
     memory: 256Mi
 
+namespaceProtection:
+  resourceQuota:
+    requestsCpu: "4"
+    requestsMemory: 4Gi
+    limitsCpu: "12"
+    limitsMemory: 6Gi
+    pods: "30"
+    services: "10"
+    configMaps: "20"
+  limitRange:
+    defaultRequestCpu: 100m
+    defaultRequestMemory: 128Mi
+    defaultCpu: 500m
+    defaultMemory: 256Mi
+    minCpu: 10m
+    minMemory: 32Mi
+    maxCpu: "1"
+    maxMemory: 512Mi
+    maxCpuLimitRequestRatio: "5"
+    maxMemoryLimitRequestRatio: "2"
+
 networkPolicy:
-  allowIngress: false
-  ingressNamespaceSelector: {}
+  applicationIngress:
+    enabled: false
+    namespaceSelector:
+      matchLabels:
+        forgepath.dev/access: application
+    podSelector:
+      matchLabels:
+        forgepath.dev/client: application
+  dnsEgress:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: kube-system
+    podSelector:
+      matchLabels:
+        k8s-app: kube-dns

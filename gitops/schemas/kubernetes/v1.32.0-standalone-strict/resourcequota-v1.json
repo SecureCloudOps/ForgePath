@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["apiVersion", "kind", "metadata", "spec"],
+  "properties": {
+    "apiVersion": {"const": "v1"},
+    "kind": {"const": "ResourceQuota"},
+    "metadata": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {"name": {"type": "string"}, "labels": {"type": "object"}},
+      "additionalProperties": true
+    },
+    "spec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hard"],
+      "properties": {
+        "hard": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {"type": ["string", "integer"]}
+        },
+        "scopeSelector": {"type": "object"},
+        "scopes": {"type": "array", "items": {"type": "string"}}
+      }
+    }
+  }
+}

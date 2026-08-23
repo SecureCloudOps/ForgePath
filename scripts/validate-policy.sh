@@ -80,7 +80,12 @@ workload-token.yaml|Deployment/workload-token: pod spec must set automountServic
 serviceaccount-token.yaml|ServiceAccount/serviceaccount-token: must set automountServiceAccountToken=false
 host-network.yaml|Deployment/host-network: hostNetwork is forbidden
 host-pid.yaml|Deployment/host-pid: hostPID is forbidden
-missing-default-deny.yaml|Rendered manifests with workloads must include a default-deny NetworkPolicy
+missing-default-deny.yaml|Rendered manifests with workloads must include a namespace-wide default-deny NetworkPolicy
+weak-namespace-boundary.yaml|Rendered manifests with workloads must include a namespace-wide default-deny NetworkPolicy
+weak-namespace-boundary.yaml|Rendered manifests with workloads must include a ResourceQuota
+weak-namespace-boundary.yaml|Rendered manifests with workloads must include a Container LimitRange
+weak-namespace-boundary.yaml|Rendered manifests with monitored workloads must restrict Prometheus ingress
+weak-namespace-boundary.yaml|Rendered manifests with workloads must allow egress only to kube-system DNS pods
 POLICY_FIXTURES
 
 printf 'ForgePath Kubernetes policy validation passed.\n'

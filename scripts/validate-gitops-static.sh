@@ -50,9 +50,10 @@ validate_argocd() {
       .metadata.namespace == "argocd" and
       .spec.sourceRepos == [$repo] and
       .spec.destinations == [{"namespace": $namespace, "server": $server}] and
-      (.spec.namespaceResourceWhitelist | length) == 8 and
+      (.spec.namespaceResourceWhitelist | length) == 10 and
       ([.spec.namespaceResourceWhitelist[] | [.group, .kind]] | sort) ==
-        [["", "ConfigMap"], ["", "Service"], ["", "ServiceAccount"],
+        [["", "ConfigMap"], ["", "LimitRange"], ["", "ResourceQuota"],
+         ["", "Service"], ["", "ServiceAccount"],
          ["argoproj.io", "AnalysisTemplate"], ["argoproj.io", "Rollout"],
          ["monitoring.coreos.com", "PrometheusRule"], ["monitoring.coreos.com", "ServiceMonitor"],
          ["networking.k8s.io", "NetworkPolicy"]] and
@@ -77,7 +78,16 @@ validate_argocd() {
       .spec.destination == {"server": $server, "namespace": $namespace} and
       .spec.syncPolicy.automated.prune == true and
       .spec.syncPolicy.automated.selfHeal == true and
-      ((.spec.syncPolicy.syncOptions // []) | index("CreateNamespace=true") | not)
+      .spec.syncPolicy.managedNamespaceMetadata.labels == {
+        "pod-security.kubernetes.io/enforce": "restricted",
+        "pod-security.kubernetes.io/enforce-version": "v1.32",
+        "pod-security.kubernetes.io/audit": "restricted",
+        "pod-security.kubernetes.io/audit-version": "v1.32",
+        "pod-security.kubernetes.io/warn": "restricted",
+        "pod-security.kubernetes.io/warn-version": "v1.32"
+      } and
+      ((.spec.syncPolicy.syncOptions // []) | index("CreateNamespace=true") != null) and
+      ((.spec.syncPolicy.syncOptions // []) | index("ApplyOutOfSyncOnly=true") != null)
     ' >/dev/null || return 1
 
   if rg -l '^kind:[[:space:]]*ApplicationSet[[:space:]]*$' gitops >/dev/null; then
@@ -124,14 +134,16 @@ authorize_rendered() {
   fi
 
   if ! jq -se --arg namespace "$intended_namespace" '
-    length == 10 and
+    length == 13 and
     all(.[ ]; .apiVersion and .kind and .metadata.name) and
     all(.[ ]; (.metadata.namespace // $namespace) == $namespace) and
     ([.[] | [(.apiVersion | split("/") | if length == 1 then "" else .[0] end), .kind]] | sort) ==
-      [["", "ConfigMap"], ["", "Service"], ["", "Service"], ["", "ServiceAccount"],
+      [["", "ConfigMap"], ["", "LimitRange"], ["", "ResourceQuota"],
+       ["", "Service"], ["", "Service"], ["", "ServiceAccount"],
        ["argoproj.io", "AnalysisTemplate"], ["argoproj.io", "Rollout"],
        ["monitoring.coreos.com", "PrometheusRule"], ["monitoring.coreos.com", "ServiceMonitor"],
-       ["networking.k8s.io", "NetworkPolicy"], ["networking.k8s.io", "NetworkPolicy"]]
+       ["networking.k8s.io", "NetworkPolicy"], ["networking.k8s.io", "NetworkPolicy"],
+       ["networking.k8s.io", "NetworkPolicy"]]
   ' <<<"$documents" >/dev/null; then
     printf 'rendered resources exceed the AppProject namespace/kind allowlist\n' >&2
     return 1
@@ -225,6 +237,8 @@ run_negative_suite() {
   local mutable_values="$work_directory/mutable-values.yaml"
   local unauthorized_namespace="$work_directory/unauthorized-namespace.yaml"
   local unauthorized_repository="$work_directory/unauthorized-repository.yaml"
+  local missing_psa="$work_directory/missing-psa.yaml"
+  local missing_namespace_creation="$work_directory/missing-namespace-creation.yaml"
   local secret_manifests="$work_directory/secret-manifests.yaml"
   local cluster_manifests="$work_directory/cluster-manifests.yaml"
   local policy_violation="$work_directory/policy-violation.yaml"
@@ -246,6 +260,16 @@ run_negative_suite() {
     "$application" >"$unauthorized_repository"
   expect_rejection 'unauthorized repository' validate_argocd \
     "$project" "$unauthorized_repository"
+
+  yq 'del(.spec.syncPolicy.managedNamespaceMetadata.labels."pod-security.kubernetes.io/enforce")' \
+    "$application" >"$missing_psa"
+  expect_rejection 'missing restricted Pod Security enforcement' validate_argocd \
+    "$project" "$missing_psa"
+
+  yq '.spec.syncPolicy.syncOptions -= ["CreateNamespace=true"]' \
+    "$application" >"$missing_namespace_creation"
+  expect_rejection 'namespace creation without managed security metadata' validate_argocd \
+    "$project" "$missing_namespace_creation"
 
   cp "$rendered" "$secret_manifests"
   printf '\n---\napiVersion: v1\nkind: Secret\nmetadata:\n  name: forbidden\ntype: Opaque\n' \

@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["apiVersion", "kind", "metadata", "spec"],
+  "properties": {
+    "apiVersion": {"const": "v1"},
+    "kind": {"const": "LimitRange"},
+    "metadata": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {"name": {"type": "string"}, "labels": {"type": "object"}},
+      "additionalProperties": true
+    },
+    "spec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["limits"],
+      "properties": {
+        "limits": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["type"],
+            "properties": {
+              "type": {"enum": ["Container", "Pod", "PersistentVolumeClaim"]},
+              "default": {"$ref": "#/$defs/resourceList"},
+              "defaultRequest": {"$ref": "#/$defs/resourceList"},
+              "max": {"$ref": "#/$defs/resourceList"},
+              "maxLimitRequestRatio": {"$ref": "#/$defs/resourceList"},
+              "min": {"$ref": "#/$defs/resourceList"}
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "resourceList": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {"type": ["string", "integer"]}
+    }
+  }
+}

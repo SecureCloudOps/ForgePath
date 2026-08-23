@@ -3,6 +3,7 @@
 	validate-gitops-runtime validate-gitops-static validate-policy validate-secure-fastapi \
 	validate-kyverno-runtime validate-kyverno-static validate-observability-online \
 	validate-observability-runtime validate-observability-static \
+	validate-namespace-protections-runtime validate-namespace-protections-static \
 	validate-progressive-delivery-runtime validate-progressive-delivery-static validate-security \
 	validate-security-online validate-security-static validate-trivy-online \
 	validate-trusted-artifact validate-v1 validate-v1-static
@@ -44,6 +45,19 @@ validate-kyverno-static:
 		shellcheck scripts/validate-kyverno-static.sh; \
 		./scripts/validate-kyverno-static.sh; \
 	fi
+
+validate-namespace-protections-static: validate-policy validate-secure-fastapi validate-gitops-static
+	@printf 'ForgePath namespace-protections static validation passed.\n'
+
+validate-namespace-protections-runtime: validate-namespace-protections-static
+	@if command -v mise >/dev/null; then \
+		mise exec -- shellcheck scripts/validate-namespace-protections-runtime.sh; \
+		mise exec -- ./scripts/validate-namespace-protections-runtime.sh; \
+	else \
+		shellcheck scripts/validate-namespace-protections-runtime.sh; \
+		./scripts/validate-namespace-protections-runtime.sh; \
+	fi
+	@printf 'ForgePath namespace-protections runtime validation passed.\n'
 
 validate-gitops-runtime: validate-gitops-static
 	@if command -v mise >/dev/null; then \

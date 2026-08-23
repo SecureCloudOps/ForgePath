@@ -86,6 +86,8 @@ Choose **Create → Secure FastAPI service**. Output is confined to
 | --- | --- | --- |
 | Repository foundation | `make validate-foundation` | Required structure, documentation, architecture stages, and shell safety |
 | Paved path and security | `make validate-security` | Tests, scans, schemas, Helm, OPA, and Kyverno CLI negative fixtures |
+| Namespace protections static | `make validate-namespace-protections-static` | Restricted PSA metadata, namespace-wide deny-all networking, DNS/Prometheus exceptions, quota, limits, and negative fixtures |
+| Namespace protections runtime | `make validate-namespace-protections-runtime` | Disposable Kind proof of service, scrape, and DNS success plus ingress, egress, quota, limit, and restricted-PSA denial |
 | Observability static | `make validate-observability-static` | Prometheus rules, 96.67% degradation fixture, dashboard, Helm resources, and restricted scrape policy |
 | Vulnerability data (online) | `make validate-observability-online` | One cached Trivy DB snapshot followed by update-disabled filesystem and image scans |
 | Observability runtime | `make validate-observability-runtime` | Disposable Kind proof of live scraping, controlled degradation, and fast-burn alert firing |
@@ -149,6 +151,7 @@ completion criterion.
 - [Progressive-delivery abort runbook](services/secure-fastapi-service/docs/progressive-delivery.md)
 - [V1 validation evidence](docs/evidence/V1_VALIDATION.md)
 - [V2 observability validation evidence](docs/evidence/V2_VALIDATION.md)
+- [Namespace-isolation validation evidence](docs/evidence/NAMESPACE_ISOLATION.md)
 - [Threat model](docs/THREAT_MODEL.md)
 - [GitOps design and rollback](gitops/README.md)
 - [Backstage boundary](platform/backstage/README.md)

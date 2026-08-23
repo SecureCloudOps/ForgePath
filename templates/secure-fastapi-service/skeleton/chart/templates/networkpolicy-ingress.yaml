@@ -1,4 +1,4 @@
-{{- if or .Values.networkPolicy.allowIngress .Values.monitoring.enabled }}
+{{- if or .Values.networkPolicy.applicationIngress.enabled .Values.monitoring.enabled }}
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -13,10 +13,12 @@ spec:
   policyTypes:
     - Ingress
   ingress:
-    {{- if .Values.networkPolicy.allowIngress }}
+    {{- if .Values.networkPolicy.applicationIngress.enabled }}
     - from:
         - namespaceSelector:
-            {{- toYaml .Values.networkPolicy.ingressNamespaceSelector | nindent 12 }}
+            {{- toYaml .Values.networkPolicy.applicationIngress.namespaceSelector | nindent 12 }}
+          podSelector:
+            {{- toYaml .Values.networkPolicy.applicationIngress.podSelector | nindent 12 }}
       ports:
         - protocol: TCP
           port: 8080

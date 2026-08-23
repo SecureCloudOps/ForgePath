@@ -30,11 +30,13 @@ trusted-artifact metadata. A tag is neither required nor accepted by the chart.
 The `forgepath-local` AppProject accepts only the ForgePath repository, the
 in-cluster API destination, and the `secure-fastapi-service-local` namespace.
 Its namespace allowlist contains only Rollout, AnalysisTemplate, Service,
-ServiceAccount, NetworkPolicy, and the existing monitoring/dashboard resources.
-Every cluster-scoped kind is blacklisted, which also means this model does not
-install the Argo Rollouts or Prometheus Operator CRDs and does not create its
-destination namespace. Secret is absent from the allowlist and rendered Secrets
-fail validation.
+ServiceAccount, NetworkPolicy, ResourceQuota, LimitRange, and the existing
+monitoring/dashboard resources. Every cluster-scoped kind is blacklisted, which
+also means this model does not install the Argo Rollouts or Prometheus Operator
+CRDs. Secret is absent from the allowlist and rendered Secrets fail validation.
+The Application creates only its fixed destination namespace and applies
+version-pinned `restricted` Pod Security Admission labels through Argo CD
+managed namespace metadata.
 
 There is one Application and no ApplicationSet because no current fan-out or
 multi-environment requirement exists.

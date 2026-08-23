@@ -5,10 +5,7 @@ metadata:
   labels:
     {{- include "service.labels" . | nindent 4 }}
 spec:
-  podSelector:
-    matchLabels:
-      app.kubernetes.io/name: {{ include "service.name" . }}
-      app.kubernetes.io/instance: {{ .Release.Name }}
+  podSelector: {}
   policyTypes:
     - Ingress
     - Egress

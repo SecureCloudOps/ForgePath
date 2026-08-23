@@ -47,11 +47,13 @@ helm template __FORGEPATH_SERVICE_NAME__ chart \
   --set image.digest=sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 ```
 
-The default NetworkPolicy denies all ingress and egress except `/metrics` port
-access from Prometheus pods matching both configured namespace and pod
-selectors. Enable
-`networkPolicy.allowIngress=true` only when a namespace-selected caller should
-reach port 8080. No egress is required by the generated application.
+The namespace boundary includes ResourceQuota and LimitRange. Its default
+NetworkPolicy selects every pod and denies all ingress and egress. DNS is the
+application's only egress exception and is restricted to kube-system DNS pods
+on UDP/TCP 53. Prometheus access to `/metrics` requires both configured
+namespace and pod selectors and TCP 8080. Enable
+`networkPolicy.applicationIngress.enabled=true` only when a caller matching
+both configured selectors should reach the application on port 8080.
 
 Operational procedures are in [RUNBOOK.md](docs/RUNBOOK.md), security decisions
 in [SECURITY.md](docs/SECURITY.md), SLO definitions and demo windows in

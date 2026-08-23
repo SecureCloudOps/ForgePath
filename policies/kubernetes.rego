@@ -118,11 +118,88 @@ image_is_mutable(image) if {
 default_deny_network_policy_exists if {
 	some document in documents
 	document.kind == "NetworkPolicy"
+	count(object.get(document.spec, "podSelector", {})) == 0
 	policy_types := object.get(document.spec, "policyTypes", [])
 	"Ingress" in policy_types
 	"Egress" in policy_types
 	count(object.get(document.spec, "ingress", [])) == 0
 	count(object.get(document.spec, "egress", [])) == 0
+}
+
+resource_quota_exists if {
+	some document in documents
+	document.kind == "ResourceQuota"
+	hard := object.get(document.spec, "hard", {})
+	every resource in {
+		"requests.cpu", "requests.memory", "limits.cpu", "limits.memory",
+		"pods", "services", "configmaps",
+	} {
+		object.get(hard, resource, null) != null
+	}
+}
+
+limit_range_exists if {
+	some document in documents
+	document.kind == "LimitRange"
+	some limit in object.get(document.spec, "limits", [])
+	object.get(limit, "type", "") == "Container"
+	every field in {"default", "defaultRequest", "min", "max", "maxLimitRequestRatio"} {
+		resources := object.get(limit, field, {})
+		object.get(resources, "cpu", null) != null
+		object.get(resources, "memory", null) != null
+	}
+}
+
+network_policy_ingress_rules contains ingress if {
+	some document in documents
+	document.kind == "NetworkPolicy"
+	some ingress in object.get(document.spec, "ingress", [])
+}
+
+network_policy_egress_rules contains egress if {
+	some document in documents
+	document.kind == "NetworkPolicy"
+	some egress in object.get(document.spec, "egress", [])
+}
+
+ingress_rule_is_narrow(ingress) if {
+	count(object.get(ingress, "from", [])) == 1
+	peer := ingress.from[0]
+	count(object.get(object.get(peer, "namespaceSelector", {}), "matchLabels", {})) > 0
+	count(object.get(object.get(peer, "podSelector", {}), "matchLabels", {})) > 0
+	object.get(ingress, "ports", []) == [{"protocol": "TCP", "port": 8080}]
+}
+
+prometheus_ingress_policy_exists if {
+	every ingress in network_policy_ingress_rules {
+		ingress_rule_is_narrow(ingress)
+	}
+	some document in documents
+	document.kind == "NetworkPolicy"
+	some ingress in object.get(document.spec, "ingress", [])
+	count(object.get(ingress, "from", [])) == 1
+	peer := ingress.from[0]
+	object.get(object.get(object.get(peer, "namespaceSelector", {}), "matchLabels", {}), "kubernetes.io/metadata.name", "") == "monitoring"
+	object.get(object.get(object.get(peer, "podSelector", {}), "matchLabels", {}), "app.kubernetes.io/name", "") == "prometheus"
+	object.get(ingress, "ports", []) == [{"protocol": "TCP", "port": 8080}]
+}
+
+dns_egress_policy_exists if {
+	count(network_policy_egress_rules) == 1
+	some document in documents
+	document.kind == "NetworkPolicy"
+	count(object.get(document.spec, "podSelector", {})) == 0
+	object.get(document.spec, "policyTypes", []) == ["Egress"]
+	count(object.get(document.spec, "egress", [])) == 1
+	egress := document.spec.egress[0]
+	count(object.get(egress, "to", [])) == 1
+	peer := egress.to[0]
+	object.get(object.get(object.get(peer, "namespaceSelector", {}), "matchLabels", {}), "kubernetes.io/metadata.name", "") == "kube-system"
+	object.get(object.get(object.get(peer, "podSelector", {}), "matchLabels", {}), "k8s-app", "") == "kube-dns"
+	ports := object.get(egress, "ports", [])
+	count(ports) == 2
+	{"protocol": "UDP", "port": 53} in ports
+	{"protocol": "TCP", "port": 53} in ports
 }
 
 deny contains message if {
@@ -219,7 +296,27 @@ deny contains message if {
 	)
 }
 
-deny contains "Rendered manifests with workloads must include a default-deny NetworkPolicy for both ingress and egress" if {
+deny contains "Rendered manifests with workloads must include a namespace-wide default-deny NetworkPolicy for both ingress and egress" if {
 	count(workloads) > 0
 	not default_deny_network_policy_exists
+}
+
+deny contains "Rendered manifests with workloads must include a ResourceQuota for CPU, memory, pods, services, and configmaps" if {
+	count(workloads) > 0
+	not resource_quota_exists
+}
+
+deny contains "Rendered manifests with workloads must include a Container LimitRange with CPU and memory defaults, minimums, maximums, and ratios" if {
+	count(workloads) > 0
+	not limit_range_exists
+}
+
+deny contains "Rendered manifests with monitored workloads must restrict Prometheus ingress by namespace, pod label, and TCP port 8080" if {
+	count(workloads) > 0
+	not prometheus_ingress_policy_exists
+}
+
+deny contains "Rendered manifests with workloads must allow egress only to kube-system DNS pods on UDP and TCP port 53" if {
+	count(workloads) > 0
+	not dns_egress_policy_exists
 }

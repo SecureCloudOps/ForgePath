@@ -1,0 +1,33 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: quota-violation
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 10001
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: one
+      image: __FORGEPATH_RUNTIME_IMAGE__
+      securityContext: &security
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]
+      resources: &resources
+        requests: {cpu: "1", memory: 128Mi}
+        limits: {cpu: "1", memory: 256Mi}
+    - name: two
+      image: __FORGEPATH_RUNTIME_IMAGE__
+      securityContext: *security
+      resources: *resources
+    - name: three
+      image: __FORGEPATH_RUNTIME_IMAGE__
+      securityContext: *security
+      resources: *resources
+    - name: four
+      image: __FORGEPATH_RUNTIME_IMAGE__
+      securityContext: *security
+      resources: *resources

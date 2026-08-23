@@ -182,7 +182,7 @@ rendered_kinds="$(
   yq -o=json -I=0 'select(. != null)' "$work_directory/manifests.yaml" \
     | jq -r '.kind' | sort
 )"
-expected_kinds="$(printf '%s\n' AnalysisTemplate ConfigMap NetworkPolicy NetworkPolicy PrometheusRule Rollout Service Service ServiceAccount ServiceMonitor | sort)"
+expected_kinds="$(printf '%s\n' AnalysisTemplate ConfigMap LimitRange NetworkPolicy NetworkPolicy NetworkPolicy PrometheusRule ResourceQuota Rollout Service Service ServiceAccount ServiceMonitor | sort)"
 if [[ "$rendered_kinds" != "$expected_kinds" ]]; then
   printf 'unexpected rendered Kubernetes resource set:\n%s\n' "$rendered_kinds" >&2
   exit 1
@@ -198,6 +198,12 @@ allow_ingress_network_policy_json="$(
   yq -o=json 'select(.kind == "NetworkPolicy" and (.metadata.name | test("-allow-ingress$")))' \
     "$work_directory/manifests.yaml"
 )"
+dns_egress_network_policy_json="$(
+  yq -o=json 'select(.kind == "NetworkPolicy" and (.metadata.name | test("-allow-dns-egress$")))' \
+    "$work_directory/manifests.yaml"
+)"
+resource_quota_json="$(yq -o=json 'select(.kind == "ResourceQuota")' "$work_directory/manifests.yaml")"
+limit_range_json="$(yq -o=json 'select(.kind == "LimitRange")' "$work_directory/manifests.yaml")"
 service_monitor_json="$(yq -o=json 'select(.kind == "ServiceMonitor")' "$work_directory/manifests.yaml")"
 prometheus_rule_json="$(yq -o=json 'select(.kind == "PrometheusRule")' "$work_directory/manifests.yaml")"
 dashboard_json="$(yq -r 'select(.kind == "ConfigMap") | .data."slo-dashboard.json"' "$work_directory/manifests.yaml")"
@@ -245,6 +251,7 @@ jq -e '
 
 jq -e '
   .spec.policyTypes == ["Ingress", "Egress"] and
+  .spec.podSelector == {} and
   .spec.ingress == [] and
   .spec.egress == []
 ' <<<"$default_deny_network_policy_json" >/dev/null
@@ -256,6 +263,39 @@ jq -e '
   $ingress[0].from[0].podSelector.matchLabels["app.kubernetes.io/name"] == "prometheus" and
   $ingress[0].ports == [{"protocol": "TCP", "port": 8080}]
 ' <<<"$allow_ingress_network_policy_json" >/dev/null
+jq -e '
+  .spec.podSelector == {} and
+  .spec.policyTypes == ["Egress"] and
+  (.spec.egress | length) == 1 and
+  (.spec.egress[0].to | length) == 1 and
+  .spec.egress[0].to[0].namespaceSelector.matchLabels["kubernetes.io/metadata.name"] == "kube-system" and
+  .spec.egress[0].to[0].podSelector.matchLabels["k8s-app"] == "kube-dns" and
+  .spec.egress[0].ports == [
+    {"protocol": "UDP", "port": 53},
+    {"protocol": "TCP", "port": 53}
+  ]
+' <<<"$dns_egress_network_policy_json" >/dev/null
+jq -e '
+  .spec.hard == {
+    "requests.cpu": "4",
+    "requests.memory": "4Gi",
+    "limits.cpu": "12",
+    "limits.memory": "6Gi",
+    "pods": "30",
+    "services": "10",
+    "configmaps": "20"
+  }
+' <<<"$resource_quota_json" >/dev/null
+jq -e '
+  .spec.limits == [{
+    "type": "Container",
+    "defaultRequest": {"cpu": "100m", "memory": "128Mi"},
+    "default": {"cpu": "500m", "memory": "256Mi"},
+    "min": {"cpu": "10m", "memory": "32Mi"},
+    "max": {"cpu": "1", "memory": "512Mi"},
+    "maxLimitRequestRatio": {"cpu": "5", "memory": "2"}
+  }]
+' <<<"$limit_range_json" >/dev/null
 jq -e '
   (.spec.endpoints | length) == 1 and
   .spec.endpoints[0].path == "/metrics" and

@@ -1,5 +1,27 @@
 # ForgePath demonstrations
 
+## Namespace-isolation demonstration
+
+Offline boundary validation:
+
+```sh
+make validate-namespace-protections-static
+```
+
+After explicit approval for the disposable cluster mutation:
+
+```sh
+make validate-namespace-protections-runtime
+```
+
+The `forgepath-namespace-boundary` harness creates the workload namespace with
+version-pinned `restricted` Pod Security Admission before creating any workload,
+then installs its ResourceQuota, LimitRange, and namespace-wide default-deny
+policies. It proves authorized service traffic, Prometheus scraping, and DNS;
+rejects unauthorized ingress, unauthorized application egress, quota and limit
+violations, and a restricted Pod Security violation; then deletes the isolated
+cluster and restores the original context.
+
 ## Progressive-delivery demonstration
 
 The next approved runtime demonstration is intentionally one failure story:
