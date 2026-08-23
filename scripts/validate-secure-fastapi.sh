@@ -228,8 +228,8 @@ jq -e '
     "name": "availability-burn-rate",
     "initialDelay": "6m",
     "count": 1,
-    "failureLimit": 1,
-    "consecutiveErrorLimit": 1,
+    "failureLimit": 0,
+    "consecutiveErrorLimit": 0,
     "successCondition": "len(result) == 1 && result[0] <= 14.4",
     "provider": {
       "prometheus": {

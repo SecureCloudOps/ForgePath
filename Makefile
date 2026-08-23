@@ -3,7 +3,7 @@
 	validate-gitops-runtime validate-gitops-static validate-policy validate-secure-fastapi \
 	validate-kyverno-runtime validate-kyverno-static validate-observability-online \
 	validate-observability-runtime validate-observability-static \
-	validate-progressive-delivery-static validate-security \
+	validate-progressive-delivery-runtime validate-progressive-delivery-static validate-security \
 	validate-security-online validate-security-static validate-trivy-online \
 	validate-trusted-artifact validate-v1 validate-v1-static
 
@@ -90,6 +90,15 @@ validate-observability-static: validate-secure-fastapi
 
 validate-progressive-delivery-static: validate-observability-static validate-gitops-static
 	@printf 'ForgePath progressive-delivery static validation passed.\n'
+
+validate-progressive-delivery-runtime: validate-progressive-delivery-static
+	@if command -v mise >/dev/null; then \
+		mise exec -- shellcheck scripts/validate-progressive-delivery-runtime.sh; \
+		mise exec -- ./scripts/validate-progressive-delivery-runtime.sh; \
+	else \
+		shellcheck scripts/validate-progressive-delivery-runtime.sh; \
+		./scripts/validate-progressive-delivery-runtime.sh; \
+	fi
 
 validate-trivy-online:
 	@if command -v mise >/dev/null; then \
