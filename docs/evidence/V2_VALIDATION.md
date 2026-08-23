@@ -4,7 +4,7 @@ The initial ForgePath v2 Prometheus/SLO scope was statically validated on
 2026-08-23 with the repository-pinned toolchain, including Prometheus
 `promtool` v3.5.0.
 
-Validated implementation commit: `__FORGEPATH_V2_VALIDATED_COMMIT__`
+Validated implementation commit: `a601481d74ceb4653b03ad77db00d1e81021934d`
 
 ## Recorded static result
 
