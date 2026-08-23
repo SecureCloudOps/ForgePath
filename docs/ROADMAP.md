@@ -20,7 +20,12 @@ ForgePath will be built in small, demonstrable increments:
     error budget, burn alerts, dashboard, and restricted scrape path. Complete.
     See the [v2 validation evidence](evidence/V2_VALIDATION.md).
 11. Run the separately approved disposable observability runtime proof before
-    enabling a progressive-delivery controller.
+    enabling a progressive-delivery controller. Runtime proof complete.
+12. Replace the reference Deployment with a replica-weighted Argo Rollout,
+    stable/canary Services, and fail-closed Prometheus analysis at 5%, 25%, and
+    50%. Static implementation complete.
+13. Run the separately approved defective-v2 runtime proof: 5% canary, SLO
+    degradation, failed AnalysisRun, aborted Rollout, and stable v1 traffic.
 
 Details will be designed only when each increment begins. The project will favor
 one complete, secure path over broad platform scope.

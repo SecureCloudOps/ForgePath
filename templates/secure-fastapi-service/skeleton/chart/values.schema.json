@@ -2,9 +2,9 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "additionalProperties": false,
-  "required": ["replicaCount", "image", "service", "failureFixture", "monitoring", "resources", "networkPolicy"],
+  "required": ["replicaCount", "image", "service", "failureFixture", "progressiveDelivery", "monitoring", "resources", "networkPolicy"],
   "properties": {
-    "replicaCount": {"type": "integer", "minimum": 1},
+    "replicaCount": {"type": "integer", "minimum": 20, "multipleOf": 20},
     "image": {
       "type": "object",
       "additionalProperties": false,
@@ -30,12 +30,31 @@
       "required": ["enabled"],
       "properties": {"enabled": {"type": "boolean"}}
     },
+    "progressiveDelivery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["analysis"],
+      "properties": {
+        "analysis": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["prometheusAddress", "burnRateWindow", "maxBurnRate", "initialDelay", "timeoutSeconds"],
+          "properties": {
+            "prometheusAddress": {"type": "string", "pattern": "^https?://\\S+$"},
+            "burnRateWindow": {"enum": ["1m", "5m"]},
+            "maxBurnRate": {"type": "number", "minimum": 0},
+            "initialDelay": {"$ref": "#/$defs/duration"},
+            "timeoutSeconds": {"type": "integer", "minimum": 1, "maximum": 60}
+          }
+        }
+      }
+    },
     "monitoring": {
       "type": "object",
       "additionalProperties": false,
       "required": ["enabled", "serviceMonitor", "prometheusAccess", "slo", "grafana"],
       "properties": {
-        "enabled": {"type": "boolean"},
+        "enabled": {"const": true},
         "serviceMonitor": {
           "type": "object",
           "additionalProperties": false,

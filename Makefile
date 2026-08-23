@@ -2,7 +2,8 @@
 	validate-backstage-static validate-foundation \
 	validate-gitops-runtime validate-gitops-static validate-policy validate-secure-fastapi \
 	validate-kyverno-runtime validate-kyverno-static validate-observability-online \
-	validate-observability-runtime validate-observability-static validate-security \
+	validate-observability-runtime validate-observability-static \
+	validate-progressive-delivery-static validate-security \
 	validate-security-online validate-security-static validate-trivy-online \
 	validate-trusted-artifact validate-v1 validate-v1-static
 
@@ -86,6 +87,9 @@ validate-secure-fastapi:
 
 validate-observability-static: validate-secure-fastapi
 	@printf 'ForgePath observability static validation passed.\n'
+
+validate-progressive-delivery-static: validate-observability-static validate-gitops-static
+	@printf 'ForgePath progressive-delivery static validation passed.\n'
 
 validate-trivy-online:
 	@if command -v mise >/dev/null; then \

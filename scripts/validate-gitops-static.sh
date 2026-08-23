@@ -50,9 +50,10 @@ validate_argocd() {
       .metadata.namespace == "argocd" and
       .spec.sourceRepos == [$repo] and
       .spec.destinations == [{"namespace": $namespace, "server": $server}] and
-      (.spec.namespaceResourceWhitelist | length) == 7 and
+      (.spec.namespaceResourceWhitelist | length) == 8 and
       ([.spec.namespaceResourceWhitelist[] | [.group, .kind]] | sort) ==
-        [["", "ConfigMap"], ["", "Service"], ["", "ServiceAccount"], ["apps", "Deployment"],
+        [["", "ConfigMap"], ["", "Service"], ["", "ServiceAccount"],
+         ["argoproj.io", "AnalysisTemplate"], ["argoproj.io", "Rollout"],
          ["monitoring.coreos.com", "PrometheusRule"], ["monitoring.coreos.com", "ServiceMonitor"],
          ["networking.k8s.io", "NetworkPolicy"]] and
       .spec.clusterResourceBlacklist == [{"group": "*", "kind": "*"}] and
@@ -123,11 +124,12 @@ authorize_rendered() {
   fi
 
   if ! jq -se --arg namespace "$intended_namespace" '
-    length == 8 and
+    length == 10 and
     all(.[ ]; .apiVersion and .kind and .metadata.name) and
     all(.[ ]; (.metadata.namespace // $namespace) == $namespace) and
     ([.[] | [(.apiVersion | split("/") | if length == 1 then "" else .[0] end), .kind]] | sort) ==
-      [["", "ConfigMap"], ["", "Service"], ["", "ServiceAccount"], ["apps", "Deployment"],
+      [["", "ConfigMap"], ["", "Service"], ["", "Service"], ["", "ServiceAccount"],
+       ["argoproj.io", "AnalysisTemplate"], ["argoproj.io", "Rollout"],
        ["monitoring.coreos.com", "PrometheusRule"], ["monitoring.coreos.com", "ServiceMonitor"],
        ["networking.k8s.io", "NetworkPolicy"], ["networking.k8s.io", "NetworkPolicy"]]
   ' <<<"$documents" >/dev/null; then
@@ -136,7 +138,7 @@ authorize_rendered() {
   fi
 
   if ! jq -se --arg reference "$trusted_reference" '
-    [.[] | select(.kind == "Deployment") | .spec.template.spec |
+    [.[] | select(.kind == "Rollout") | .spec.template.spec |
       ((.initContainers // []) + (.containers // []) + (.ephemeralContainers // []))[] |
       .image] as $images |
     ($images | length) > 0 and
@@ -184,7 +186,7 @@ render_and_validate() {
   helm template secure-fastapi-service "$chart" \
     --namespace "$intended_namespace" --values "$candidate_values" >"$output"
   kubeconform -exit-on-error -strict -summary \
-    -skip PrometheusRule,ServiceMonitor \
+    -skip AnalysisTemplate,PrometheusRule,Rollout,ServiceMonitor \
     -schema-location "file://$schema_directory/{{.ResourceKind}}{{.KindSuffix}}.json" \
     "$output" >/dev/null || return 1
   conftest test --combine --policy policies "$output" >/dev/null || return 1

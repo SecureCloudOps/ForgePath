@@ -55,4 +55,6 @@ reach port 8080. No egress is required by the generated application.
 
 Operational procedures are in [RUNBOOK.md](docs/RUNBOOK.md), security decisions
 in [SECURITY.md](docs/SECURITY.md), SLO definitions and demo windows in
-[SLO.md](docs/SLO.md), and TechDocs navigation in `mkdocs.yml`.
+[SLO.md](docs/SLO.md), progressive delivery in
+[PROGRESSIVE_DELIVERY.md](docs/PROGRESSIVE_DELIVERY.md), and TechDocs navigation
+in `mkdocs.yml`.

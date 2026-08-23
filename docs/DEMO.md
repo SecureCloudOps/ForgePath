@@ -1,4 +1,27 @@
-# ForgePath v1 demo
+# ForgePath demonstrations
+
+## Progressive-delivery demonstration
+
+The next approved runtime demonstration is intentionally one failure story:
+
+```text
+healthy v1
+  -> reconcile defective v2
+  -> 5% replica-weighted canary
+  -> availability burn rate exceeds 14.4x
+  -> AnalysisRun fails
+  -> Rollout aborts before 25%
+  -> stable Service remains on v1
+```
+
+The repository now contains the static desired state and assertions for this
+path. The exact prerequisites, demo-only values, 95/5 synthetic request mix,
+observations, and Git rollback are in the reference service's
+[progressive-delivery runbook](../services/secure-fastapi-service/docs/progressive-delivery.md).
+Installing the Argo Rollouts prerequisites and running the cluster mutation are
+a separate approval boundary.
+
+## ForgePath v1 demo
 
 This demo tells one story with one service:
 

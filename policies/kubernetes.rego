@@ -29,7 +29,7 @@ documents contains document if {
 
 workloads contains workload if {
 	some document in documents
-	document.kind in {"Deployment", "StatefulSet", "DaemonSet", "Job"}
+	document.kind in {"Deployment", "StatefulSet", "DaemonSet", "Job", "Rollout"}
 	workload := {
 		"kind": document.kind,
 		"name": object.get(document.metadata, "name", "<unnamed>"),

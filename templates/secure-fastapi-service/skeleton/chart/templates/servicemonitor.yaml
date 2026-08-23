@@ -10,6 +10,8 @@ spec:
     matchLabels:
       app.kubernetes.io/name: {{ include "service.name" . }}
       app.kubernetes.io/instance: {{ .Release.Name }}
+  targetLabels:
+    - forgepath_delivery_role
   endpoints:
     - port: http
       path: /metrics

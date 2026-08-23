@@ -149,7 +149,7 @@ promtool check rules "$rendered/tests/prometheus-rules.yaml"
   promtool test rules prometheus-rules.test.yaml
 )
 
-kubeconform -exit-on-error -strict -skip PrometheusRule,ServiceMonitor -summary \
+kubeconform -exit-on-error -strict -skip AnalysisTemplate,PrometheusRule,Rollout,ServiceMonitor -summary \
   -schema-location "file://$schema_directory/{{.ResourceKind}}{{.KindSuffix}}.json" \
   "$work_directory/manifests.yaml"
 expect_exit_one "schema-invalid Kubernetes fixture" kubeconform \
@@ -182,13 +182,14 @@ rendered_kinds="$(
   yq -o=json -I=0 'select(. != null)' "$work_directory/manifests.yaml" \
     | jq -r '.kind' | sort
 )"
-expected_kinds="$(printf '%s\n' ConfigMap Deployment NetworkPolicy NetworkPolicy PrometheusRule Service ServiceAccount ServiceMonitor | sort)"
+expected_kinds="$(printf '%s\n' AnalysisTemplate ConfigMap NetworkPolicy NetworkPolicy PrometheusRule Rollout Service Service ServiceAccount ServiceMonitor | sort)"
 if [[ "$rendered_kinds" != "$expected_kinds" ]]; then
   printf 'unexpected rendered Kubernetes resource set:\n%s\n' "$rendered_kinds" >&2
   exit 1
 fi
 
-deployment_json="$(yq -o=json 'select(.kind == "Deployment")' "$work_directory/manifests.yaml")"
+rollout_json="$(yq -o=json 'select(.kind == "Rollout")' "$work_directory/manifests.yaml")"
+analysis_template_json="$(yq -o=json 'select(.kind == "AnalysisTemplate")' "$work_directory/manifests.yaml")"
 default_deny_network_policy_json="$(
   yq -o=json 'select(.kind == "NetworkPolicy" and (.metadata.name | test("-default-deny$")))' \
     "$work_directory/manifests.yaml"
@@ -207,7 +208,40 @@ jq -e '
   .spec.template.spec.containers[0].securityContext.readOnlyRootFilesystem == true and
   .spec.template.spec.containers[0].livenessProbe.httpGet.path == "/health/live" and
   .spec.template.spec.containers[0].readinessProbe.httpGet.path == "/health/ready"
-' <<<"$deployment_json" >/dev/null
+' <<<"$rollout_json" >/dev/null
+jq -e '
+  .spec.replicas == 20 and
+  .spec.strategy.canary.stableService == "validation-example-fastapi" and
+  .spec.strategy.canary.canaryService == "validation-example-fastapi-canary" and
+  .spec.strategy.canary.abortScaleDownDelaySeconds == 600 and
+  [.spec.strategy.canary.steps[] |
+    if has("setWeight") then ["weight", .setWeight]
+    else ["analysis", .analysis.templates[0].templateName] end] ==
+    [["weight", 5], ["analysis", "validation-example-fastapi-slo"],
+     ["weight", 25], ["analysis", "validation-example-fastapi-slo"],
+     ["weight", 50], ["analysis", "validation-example-fastapi-slo"],
+     ["weight", 100]]
+' <<<"$rollout_json" >/dev/null
+jq -e '
+  .spec.metrics[0].provider.prometheus.query as $query |
+  .spec.metrics == [{
+    "name": "availability-burn-rate",
+    "initialDelay": "6m",
+    "count": 1,
+    "failureLimit": 1,
+    "consecutiveErrorLimit": 1,
+    "successCondition": "len(result) == 1 && result[0] <= 14.4",
+    "provider": {
+      "prometheus": {
+        "address": "http://prometheus-operated.monitoring.svc.cluster.local:9090",
+        "timeout": 10,
+        "query": $query
+      }
+    }
+  }] and
+  (.spec.metrics[0].provider.prometheus.query |
+    contains("forgepath:slo_availability_burn_rate") and contains("window=\"5m\""))
+' <<<"$analysis_template_json" >/dev/null
 
 jq -e '
   .spec.policyTypes == ["Ingress", "Egress"] and
@@ -223,10 +257,11 @@ jq -e '
   $ingress[0].ports == [{"protocol": "TCP", "port": 8080}]
 ' <<<"$allow_ingress_network_policy_json" >/dev/null
 jq -e '
-  .spec.endpoints | length == 1 and
+  (.spec.endpoints | length) == 1 and
   .spec.endpoints[0].path == "/metrics" and
   .spec.endpoints[0].port == "http" and
-  .spec.endpoints[0].relabelings[0].targetLabel == "forgepath_service"
+  .spec.endpoints[0].relabelings[0].targetLabel == "forgepath_service" and
+  .spec.targetLabels == ["forgepath_delivery_role"]
 ' <<<"$service_monitor_json" >/dev/null
 jq -e '
   [.spec.groups[].rules[] | select(.record != null) | .record] |
@@ -243,43 +278,41 @@ jq -e '
   ]
 ' <<<"$dashboard_json" >/dev/null
 
-helm template validation "$rendered/chart" --set monitoring.enabled=false \
-  >"$work_directory/monitoring-disabled.yaml"
-disabled_kinds="$(
-  yq -o=json -I=0 'select(. != null)' "$work_directory/monitoring-disabled.yaml" \
-    | jq -r '.kind' | sort
-)"
-disabled_expected="$(printf '%s\n' Deployment NetworkPolicy Service ServiceAccount | sort)"
-if [[ "$disabled_kinds" != "$disabled_expected" ]]; then
-  printf 'monitoring-disabled render has unexpected resources:\n%s\n' "$disabled_kinds" >&2
+if helm template validation "$rendered/chart" --set monitoring.enabled=false \
+  >/dev/null 2>&1; then
+  printf 'Helm schema must reject disabling monitoring required by rollout analysis\n' >&2
   exit 1
 fi
-disabled_network_policy_json="$(
-  yq -o=json 'select(.kind == "NetworkPolicy" and (.metadata.name | test("-default-deny$")))' \
-    "$work_directory/monitoring-disabled.yaml"
-)"
-jq -e '.spec.ingress == []' <<<"$disabled_network_policy_json" >/dev/null
 
 helm template validation "$rendered/chart" \
   --set failureFixture.enabled=true \
   --set monitoring.slo.windowProfile=demo \
+  --set progressiveDelivery.analysis.burnRateWindow=1m \
+  --set progressiveDelivery.analysis.initialDelay=90s \
   >"$work_directory/demo.yaml"
-demo_deployment_json="$(
-  yq -o=json 'select(.kind == "Deployment")' "$work_directory/demo.yaml"
+demo_rollout_json="$(
+  yq -o=json 'select(.kind == "Rollout")' "$work_directory/demo.yaml"
 )"
 demo_prometheus_rule_json="$(
   yq -o=json 'select(.kind == "PrometheusRule")' "$work_directory/demo.yaml"
+)"
+demo_analysis_template_json="$(
+  yq -o=json 'select(.kind == "AnalysisTemplate")' "$work_directory/demo.yaml"
 )"
 jq -e '
   .spec.template.spec.containers[0].env == [
     {"name": "FORGEPATH_FAILURE_FIXTURE_ENABLED", "value": "true"}
   ]
-' <<<"$demo_deployment_json" >/dev/null
+' <<<"$demo_rollout_json" >/dev/null
 jq -e '
   ([.spec.groups[].rules[] | select(.record == "forgepath:slo_availability_burn_rate") | .labels.window] | index("1m") != null) and
   ([.spec.groups[].rules[] | select(.record == "forgepath:slo_availability_burn_rate") | .labels.window] | index("10m") != null) and
   ([.spec.groups[].rules[] | select(.record == "forgepath:slo_error_budget_remaining:ratio") | .labels.window] == ["1h"])
 ' <<<"$demo_prometheus_rule_json" >/dev/null
+jq -e '
+  .spec.metrics[0].initialDelay == "90s" and
+  (.spec.metrics[0].provider.prometheus.query | contains("window=\"1m\""))
+' <<<"$demo_analysis_template_json" >/dev/null
 
 jq -e '
   .metadata.name == "example-fastapi" and
@@ -298,7 +331,8 @@ yq -e '.site_name and .docs_dir == "docs" and .plugins[] == "techdocs-core"' \
 jq -e '.type == "object" and .properties.image.properties.digest.pattern == "^sha256:[a-f0-9]{64}$"' \
   "$rendered/chart/values.schema.json" >/dev/null
 
-for document in README.md docs/index.md docs/RUNBOOK.md docs/SECURITY.md docs/SLO.md catalog-info.yaml mkdocs.yml; do
+for document in README.md docs/index.md docs/PROGRESSIVE_DELIVERY.md docs/RUNBOOK.md \
+  docs/SECURITY.md docs/SLO.md catalog-info.yaml mkdocs.yml; do
   test -s "$rendered/$document"
 done
 

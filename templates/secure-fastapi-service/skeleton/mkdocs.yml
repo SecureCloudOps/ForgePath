@@ -4,6 +4,7 @@ nav:
   - Overview: index.md
   - Runbook: RUNBOOK.md
   - SLO: SLO.md
+  - Progressive delivery: PROGRESSIVE_DELIVERY.md
   - Security: SECURITY.md
 plugins:
   - techdocs-core

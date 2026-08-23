@@ -44,6 +44,7 @@ make validate-observability-runtime  # approved disposable Kind cluster only
 ```
 
 The runtime target refuses a pre-existing cluster and is not part of static
-validation. Prometheus is the authoritative application-health input for future
-progressive delivery; readiness remains a traffic-safety check and Argo CD
-health remains a reconciliation signal.
+validation. Prometheus is the authoritative application-health input for the
+Rollout analysis gate; readiness remains a traffic-safety check and Argo CD
+health remains a reconciliation signal. The gate consumes the existing
+availability burn-rate recording rather than maintaining a second SLI.

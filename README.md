@@ -34,7 +34,8 @@ flowchart LR
   validation --> artifact["Signed OCI artifact + SBOM"]
   artifact --> git["Git desired state<br/>immutable digest"]
   git --> argocd["Argo CD"]
-  argocd --> kyverno["Kyverno admission"]
+  argocd --> rollouts["Argo Rollouts<br/>Prometheus SLO gates"]
+  rollouts --> kyverno["Kyverno admission"]
   kyverno --> workload["Kubernetes workload"]
   reader["Read-only runtime identity"] -. status .-> workload
   reader -. status .-> argocd
@@ -88,6 +89,7 @@ Choose **Create → Secure FastAPI service**. Output is confined to
 | Observability static | `make validate-observability-static` | Prometheus rules, 96.67% degradation fixture, dashboard, Helm resources, and restricted scrape policy |
 | Vulnerability data (online) | `make validate-observability-online` | One cached Trivy DB snapshot followed by update-disabled filesystem and image scans |
 | Observability runtime | `make validate-observability-runtime` | Disposable Kind proof of live scraping, controlled degradation, and fast-burn alert firing |
+| Progressive delivery static | `make validate-progressive-delivery-static` | Rollout stages, stable/canary Services, fail-closed Prometheus analysis, GitOps allowlist, render, and policy checks |
 | Trusted artifact | `make validate-trusted-artifact` | OCI archive, Trivy report and DB fingerprint, SPDX SBOM, digest, and locally verified ephemeral signature |
 | Backstage | `make validate-backstage-static` | Pinned app and MkDocs toolchain, rendered TechDocs, catalog, renderer confinement, and permissions |
 | GitOps | `make validate-gitops-static` | Restricted AppProject/Application, trusted digest handoff, render, schema, and policy checks |
@@ -144,6 +146,7 @@ completion criterion.
 
 - [Architecture](docs/ARCHITECTURE.md)
 - [End-to-end demo and screenshot checklist](docs/DEMO.md)
+- [Progressive-delivery abort runbook](services/secure-fastapi-service/docs/progressive-delivery.md)
 - [V1 validation evidence](docs/evidence/V1_VALIDATION.md)
 - [V2 observability validation evidence](docs/evidence/V2_VALIDATION.md)
 - [Threat model](docs/THREAT_MODEL.md)

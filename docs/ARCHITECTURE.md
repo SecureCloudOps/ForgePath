@@ -14,7 +14,9 @@ flowchart LR
   policy --> artifact["OCI image + SBOM + scan report<br/>+ digest + local signature"]
   artifact --> git["Git desired state<br/>immutable image digest"]
   git --> argocd["Argo CD Application"]
-  argocd --> kyverno["Kyverno admission"]
+  argocd --> rollout["Argo Rollout<br/>5 / 25 / 50 / 100"]
+  prometheus["Prometheus SLO recordings"] --> rollout
+  rollout --> kyverno["Kyverno admission"]
   kyverno --> workload["Kubernetes workload"]
 
   reader["backstage-runtime-reader<br/>get / list / watch only"] -.-> workload
@@ -34,6 +36,7 @@ flowchart LR
 | Trusted-artifact pipeline | Build and bind scan, SBOM, signature, and digest evidence |
 | Git | Hold reviewed desired state and the approved immutable digest |
 | Argo CD | Reconcile Git state; self-heal and prune within one restricted AppProject |
+| Argo Rollouts | Keep stable/canary selectors, scale weighted ReplicaSets, and abort failed SLO analysis |
 | Kyverno | Fail closed on non-compliant Kubernetes admission requests |
 | Kubernetes | Run the workload and enforce RBAC/admission decisions |
 

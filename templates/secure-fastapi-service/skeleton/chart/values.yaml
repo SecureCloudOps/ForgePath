@@ -1,4 +1,4 @@
-replicaCount: 2
+replicaCount: 20
 
 image:
   repository: example.invalid/__FORGEPATH_SERVICE_NAME__
@@ -10,6 +10,14 @@ service:
 
 failureFixture:
   enabled: false
+
+progressiveDelivery:
+  analysis:
+    prometheusAddress: http://prometheus-operated.monitoring.svc.cluster.local:9090
+    burnRateWindow: 5m
+    maxBurnRate: 14.4
+    initialDelay: 6m
+    timeoutSeconds: 10
 
 monitoring:
   enabled: true

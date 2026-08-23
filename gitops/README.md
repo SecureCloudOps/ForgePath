@@ -29,10 +29,12 @@ trusted-artifact metadata. A tag is neither required nor accepted by the chart.
 
 The `forgepath-local` AppProject accepts only the ForgePath repository, the
 in-cluster API destination, and the `secure-fastapi-service-local` namespace.
-Its namespace allowlist contains only Deployment, Service, ServiceAccount, and
-NetworkPolicy. Every cluster-scoped kind is blacklisted, which also means this
-model does not create its destination namespace. Secret is absent from the
-allowlist and rendered Secrets fail validation.
+Its namespace allowlist contains only Rollout, AnalysisTemplate, Service,
+ServiceAccount, NetworkPolicy, and the existing monitoring/dashboard resources.
+Every cluster-scoped kind is blacklisted, which also means this model does not
+install the Argo Rollouts or Prometheus Operator CRDs and does not create its
+destination namespace. Secret is absent from the allowlist and rendered Secrets
+fail validation.
 
 There is one Application and no ApplicationSet because no current fan-out or
 multi-environment requirement exists.
@@ -75,6 +77,12 @@ both `image.repository` and `image.digest` from that artifact's metadata. Run
 later observes the merged Git commit and reconciles it; it does not decide what
 is trusted or perform promotion.
 
+The Rollout uses the fixed sequence `5% -> analysis -> 25% -> analysis -> 50% ->
+analysis -> 100%`. The stable Service retains the original name and stays pinned
+to the last healthy ReplicaSet until all gates pass. Analysis consumes the
+existing Prometheus availability burn-rate recording rule and fails closed on
+missing data or query errors.
+
 ## Rollback
 
 Rollback is a Git revert or a new reviewed commit that restores the repository
@@ -91,10 +99,12 @@ Git.
 | Trusted artifact pipeline | Build, scan, SBOM, signature, and trusted digest metadata |
 | GitOps desired state | Environment configuration, approved artifact digest, Application, and AppProject |
 | Argo CD | Reconciliation only |
+| Argo Rollouts | ReplicaSet proportions, stable/canary Service selectors, and AnalysisRuns |
 | Kubernetes | Runtime state only |
 
-The destination namespace and Argo CD installation are prerequisites owned
-outside this static model. This repository does not apply either resource.
+The destination namespace, Argo CD installation, Argo Rollouts controller/CRDs,
+and Prometheus Operator CRDs are prerequisites owned outside this static model.
+This repository does not apply them.
 
 ## Disposable runtime validation
 

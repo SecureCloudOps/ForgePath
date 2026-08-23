@@ -4,5 +4,6 @@ nav:
   - Overview: index.md
   - Runtime: runtime.md
   - Observability and SLO: observability.md
+  - Progressive delivery: progressive-delivery.md
 plugins:
   - techdocs-core

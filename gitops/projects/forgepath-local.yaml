@@ -13,8 +13,10 @@ spec:
   namespaceResourceWhitelist:
     - group: ""
       kind: ConfigMap
-    - group: apps
-      kind: Deployment
+    - group: argoproj.io
+      kind: AnalysisTemplate
+    - group: argoproj.io
+      kind: Rollout
     - group: ""
       kind: Service
     - group: ""

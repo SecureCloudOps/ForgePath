@@ -4,6 +4,25 @@ metadata:
   name: {{ include "service.fullname" . }}
   labels:
     {{- include "service.labels" . | nindent 4 }}
+    forgepath_delivery_role: stable
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: {{ include "service.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+  ports:
+    - name: http
+      port: {{ .Values.service.port }}
+      targetPort: http
+      protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "service.fullname" . }}-canary
+  labels:
+    {{- include "service.labels" . | nindent 4 }}
+    forgepath_delivery_role: canary
 spec:
   type: ClusterIP
   selector:

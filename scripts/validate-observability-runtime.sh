@@ -149,7 +149,10 @@ helm template "$release_name" services/secure-fastapi-service/chart \
   --set image.digest="$trusted_digest" \
   --set failureFixture.enabled=true \
   --set monitoring.slo.windowProfile=demo >"$rendered"
-yq 'select(.kind != "ServiceMonitor" and .kind != "PrometheusRule")' \
+yq 'select(.kind != "ServiceMonitor" and .kind != "PrometheusRule" and .kind != "AnalysisTemplate") |
+  if .kind == "Rollout" then
+    .apiVersion = "apps/v1" | .kind = "Deployment" | del(.spec.strategy)
+  else . end' \
   "$rendered" >"$runtime_resources"
 yq -o=yaml 'select(.kind == "PrometheusRule") | {"groups": .spec.groups}' \
   "$rendered" >"$rules"

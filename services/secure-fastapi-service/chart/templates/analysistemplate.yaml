@@ -1,0 +1,27 @@
+{{- if .Values.monitoring.enabled }}
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: {{ include "service.fullname" . }}-slo
+  labels:
+    {{- include "service.labels" . | nindent 4 }}
+spec:
+  metrics:
+    - name: availability-burn-rate
+      initialDelay: {{ .Values.progressiveDelivery.analysis.initialDelay }}
+      count: 1
+      failureLimit: 1
+      consecutiveErrorLimit: 1
+      successCondition: len(result) == 1 && result[0] <= {{ .Values.progressiveDelivery.analysis.maxBurnRate }}
+      provider:
+        prometheus:
+          address: {{ .Values.progressiveDelivery.analysis.prometheusAddress | quote }}
+          timeout: {{ .Values.progressiveDelivery.analysis.timeoutSeconds }}
+          query: |
+            max(
+              forgepath:slo_availability_burn_rate{
+                forgepath_service={{ include "service.fullname" . | quote }},
+                window={{ .Values.progressiveDelivery.analysis.burnRateWindow | quote }}
+              }
+            )
+{{- end }}
