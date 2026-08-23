@@ -21,6 +21,7 @@ metadata="$artifact_directory/metadata.json"
 runtime_directory=''
 original_context=''
 cluster_created=false
+last_denial_output=''
 
 log() { printf '[forgepath-workload-identity-runtime] %s\n' "$*"; }
 fail() { printf '[forgepath-workload-identity-runtime] ERROR: %s\n' "$*" >&2; exit 1; }
@@ -33,6 +34,7 @@ require_context() {
 
 cleanup() {
   local exit_code=$?
+  local context_restored=false clusters_after_cleanup=''
   trap - EXIT INT TERM
   if [[ "$cluster_created" == true ]] &&
     kind get clusters 2>/dev/null | grep -Fxq "$cluster_name"; then
@@ -40,12 +42,26 @@ cleanup() {
     kind delete cluster --name "$cluster_name" >/dev/null || exit_code=1
   fi
   if [[ -n "$original_context" ]]; then
-    kubectl config use-context "$original_context" >/dev/null || exit_code=1
+    if kubectl config use-context "$original_context" >/dev/null &&
+      [[ "$(kubectl config current-context 2>/dev/null || true)" == "$original_context" ]]; then
+      context_restored=true
+    else
+      exit_code=1
+    fi
   fi
   if [[ -n "$runtime_directory" &&
         "$runtime_directory" == /private/tmp/forgepath-workload-identity-runtime.* &&
         -d "$runtime_directory" ]]; then
     rm -rf "$runtime_directory"
+  fi
+  if ! clusters_after_cleanup="$(kind get clusters 2>/dev/null)"; then
+    exit_code=1
+  fi
+  if [[ $exit_code -eq 0 && "$context_restored" == true ]] &&
+    ! grep -Fxq "$cluster_name" <<<"$clusters_after_cleanup"; then
+    log 'PASS cleanup deleted the disposable cluster and restored the original context'
+  elif [[ $exit_code -eq 0 ]]; then
+    fail 'cleanup could not prove cluster deletion and context restoration'
   fi
   exit "$exit_code"
 }
@@ -62,14 +78,15 @@ assert_can_i() {
     --as-group="system:serviceaccounts:$workload_namespace" || true)"
   [[ "$actual" == "$expected" ]] ||
     fail "expected $service_account can-i $verb $resource in $namespace to be $expected, got $actual"
+  log "EVIDENCE auth can-i $service_account $verb $resource in $namespace: $actual"
 }
 
 assert_application_denied() {
-  local description="$1" output status
+  local description="$1" status
   shift
 
   set +e
-  output="$(kube \
+  last_denial_output="$(kube \
     --as="system:serviceaccount:$workload_namespace:$application_service_account" \
     --as-group=system:authenticated \
     --as-group=system:serviceaccounts \
@@ -78,8 +95,8 @@ assert_application_denied() {
   status=$?
   set -e
   [[ $status -ne 0 ]] || fail "application identity unexpectedly succeeded: $description"
-  grep -Eiq 'forbidden|cannot|No such file' <<<"$output" || {
-    printf '%s\n' "$output" >&2
+  grep -Eiq 'forbidden|cannot|No such file' <<<"$last_denial_output" || {
+    printf '%s\n' "$last_denial_output" >&2
     fail "application denial did not contain expected evidence: $description"
   }
 }
@@ -152,6 +169,7 @@ done
 log 'PASS negative kubectl auth can-i checks denied workload, policy, identity, and Secret paths'
 assert_application_denied 'create a privileged workload' -n "$workload_namespace" \
   create -f tests/kyverno/runtime/privileged-pod.yaml
+log "EVIDENCE privileged workload rejection: $(tr '\n' ' ' <<<"$last_denial_output")"
 log 'PASS application identity could not submit a privileged workload'
 
 cat >"$runtime_directory/api-probe.yaml" <<EOF
@@ -183,7 +201,10 @@ spec:
           try:
               urllib.request.urlopen(request, context=context, timeout=5)
           except urllib.error.HTTPError as error:
-              raise SystemExit(0 if error.code == 403 else 1)
+              if error.code == 403:
+                  print('HTTP 403: list Secrets denied for application ServiceAccount')
+                  raise SystemExit(0)
+              raise SystemExit(1)
           raise SystemExit(1)
       securityContext:
         allowPrivilegeEscalation: false
@@ -206,6 +227,10 @@ EOF
 kube apply -f "$runtime_directory/api-probe.yaml" >/dev/null
 kube -n "$workload_namespace" wait --for=jsonpath='{.status.phase}'=Succeeded \
   pod/application-api-probe --timeout=120s >/dev/null
+api_probe_evidence="$(kube -n "$workload_namespace" logs application-api-probe)"
+[[ "$api_probe_evidence" == 'HTTP 403: list Secrets denied for application ServiceAccount' ]] ||
+  fail 'application API probe did not record the expected HTTP 403'
+log "EVIDENCE workload API attempt: $api_probe_evidence"
 log 'PASS an explicitly projected, short-lived application token received HTTP 403 from the Secrets API'
 
 cat >"$runtime_directory/platform-identity.yaml" <<EOF
@@ -231,6 +256,13 @@ subjects:
 roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: forgepath-platform-reconciler}
 EOF
 kube apply -f "$runtime_directory/platform-identity.yaml" >/dev/null
+application_binding_count="$(kube -n "$workload_namespace" get rolebindings -o json | jq \
+  --arg name "$application_service_account" --arg namespace "$workload_namespace" \
+  '[.items[].subjects[]? | select(.kind == "ServiceAccount" and
+    .name == $name and .namespace == $namespace)] | length')"
+[[ "$application_binding_count" == '0' ]] ||
+  fail 'application ServiceAccount unexpectedly received a RoleBinding'
+log 'EVIDENCE binding isolation: application ServiceAccount RoleBinding subject count = 0'
 assert_can_i yes "$platform_service_account" patch "deployments.apps/$application_name"
 assert_can_i yes "$platform_service_account" get "deployments.apps/$application_name"
 assert_can_i no "$platform_service_account" patch deployments.apps/not-platform-owned
@@ -241,6 +273,7 @@ assert_can_i no "$platform_service_account" patch networkpolicies.networking.k8s
 
 assert_application_denied 'patch the platform-owned Deployment' -n "$workload_namespace" \
   patch deployment "$application_name" --type=merge -p '{"spec":{"replicas":2}}'
+log "EVIDENCE application reconciler-boundary rejection: $(tr '\n' ' ' <<<"$last_denial_output")"
 kube --as="system:serviceaccount:$workload_namespace:$platform_service_account" \
   --as-group=system:authenticated \
   --as-group=system:serviceaccounts \
@@ -250,4 +283,5 @@ kube --as="system:serviceaccount:$workload_namespace:$platform_service_account" 
 kube -n "$workload_namespace" rollout status deployment/"$application_name" --timeout=180s >/dev/null
 [[ "$(kube -n "$workload_namespace" get deployment "$application_name" -o jsonpath='{.status.readyReplicas}')" == '2' ]] ||
   fail 'platform reconciler patch did not produce two ready replicas'
+log 'EVIDENCE scoped reconciler patch: named Deployment readyReplicas = 2'
 log 'PASS isolated platform reconciler patched its named Deployment; application identity could not'

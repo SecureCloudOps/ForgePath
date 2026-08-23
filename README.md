@@ -159,6 +159,7 @@ completion criterion.
 - [V2 observability validation evidence](docs/evidence/V2_VALIDATION.md)
 - [Platform guardrail validation evidence](docs/evidence/PLATFORM_GUARDRAILS.md)
 - [Namespace-isolation validation evidence](docs/evidence/NAMESPACE_ISOLATION.md)
+- [Workload-identity validation evidence](docs/evidence/WORKLOAD_IDENTITY.md)
 - [Threat model](docs/THREAT_MODEL.md)
 - [GitOps design and rollback](gitops/README.md)
 - [Backstage boundary](platform/backstage/README.md)
