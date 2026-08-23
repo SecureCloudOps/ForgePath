@@ -43,7 +43,7 @@ The base image is pinned by digest and the runtime user is UID/GID 10001.
 ```sh
 helm lint chart
 helm template __FORGEPATH_SERVICE_NAME__ chart \
-  --set image.repository=registry.example.com/__FORGEPATH_SERVICE_NAME__ \
+  --set image.repository=ghcr.io/securecloudops/__FORGEPATH_SERVICE_NAME__ \
   --set image.digest=sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 ```
 

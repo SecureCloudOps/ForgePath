@@ -254,7 +254,7 @@ require_context
 [[ "$(kube version -o json | jq -r '.serverVersion.gitVersion')" == "$kubernetes_version" ]] || fail 'unexpected Kubernetes version'
 kind load image-archive "$artifact_directory/image.oci.tar" --name "$cluster_name"
 docker exec "${cluster_name}-control-plane" ctr --namespace k8s.io images tag \
-  "docker.io/$artifact_repository:0.1.0-local" "docker.io/$artifact_repository@$artifact_digest" >/dev/null
+  "$artifact_repository:0.1.0-local" "$artifact_repository@$artifact_digest" >/dev/null
 
 kube create namespace "$argocd_namespace" >/dev/null
 kube create namespace "$workload_namespace" >/dev/null

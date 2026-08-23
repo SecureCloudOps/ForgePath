@@ -14,7 +14,7 @@ make validate-namespace-protections-static
 
 The combined gate passed with:
 
-- 15/15 Conftest policy cases, including a deliberately weak namespace fixture;
+- 20/20 Conftest policy cases, including a deliberately weak namespace fixture;
 - deterministic Helm rendering of 13 resources;
 - strict local-schema validation of ResourceQuota, LimitRange, and three
   NetworkPolicies;

@@ -1,9 +1,16 @@
 replicaCount: 20
 
 image:
-  repository: example.invalid/__FORGEPATH_SERVICE_NAME__
+  repository: ghcr.io/securecloudops/__FORGEPATH_SERVICE_NAME__
   digest: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
   pullPolicy: IfNotPresent
+
+workloadMetadata:
+  owner: __FORGEPATH_OWNER_LABEL__
+  system: forgepath
+  environment: local
+  dataClassification: internal
+  supportTier: "2"
 
 service:
   port: 80

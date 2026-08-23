@@ -4,6 +4,10 @@ metadata:
   name: weak-namespace-boundary
   labels:
     app.kubernetes.io/name: application
+    forgepath.dev/owner: platform
+    forgepath.dev/system: forgepath
+    forgepath.dev/environment: local
+    forgepath.dev/data-classification: internal
 spec:
   automountServiceAccountToken: false
   securityContext:
@@ -13,7 +17,7 @@ spec:
       type: RuntimeDefault
   containers:
     - name: application
-      image: example.invalid/application@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      image: ghcr.io/securecloudops/application@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
       securityContext:
         allowPrivilegeEscalation: false
         capabilities:

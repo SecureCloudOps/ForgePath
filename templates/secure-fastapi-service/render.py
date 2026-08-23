@@ -14,6 +14,7 @@ REPLACEMENTS = {
     "__FORGEPATH_SERVICE_NAME__": "service_name",
     "__FORGEPATH_SERVICE_DESCRIPTION__": "description",
     "__FORGEPATH_OWNER__": "owner",
+    "__FORGEPATH_OWNER_LABEL__": "owner_label",
     "__FORGEPATH_KUBERNETES_NAMESPACE__": "kubernetes_namespace",
 }
 
@@ -41,6 +42,9 @@ def main() -> None:
         args.kubernetes_namespace = f"{args.service_name}-local"
     if not NAME_PATTERN.fullmatch(args.kubernetes_namespace):
         raise SystemExit("Kubernetes namespace must be a 3-63 character DNS label")
+    args.owner_label = args.owner.rsplit("/", maxsplit=1)[-1]
+    if not NAME_PATTERN.fullmatch(args.owner_label):
+        raise SystemExit("owner must end with a 3-63 character DNS label")
     if args.output.exists() and any(args.output.iterdir()):
         raise SystemExit(f"output directory is not empty: {args.output}")
 

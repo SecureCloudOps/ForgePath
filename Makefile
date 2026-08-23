@@ -4,6 +4,7 @@
 	validate-kyverno-runtime validate-kyverno-static validate-observability-online \
 	validate-observability-runtime validate-observability-static \
 	validate-namespace-protections-runtime validate-namespace-protections-static \
+	validate-platform-guardrails-runtime validate-platform-guardrails-static \
 	validate-progressive-delivery-runtime validate-progressive-delivery-static validate-security \
 	validate-security-online validate-security-static validate-trivy-online \
 	validate-trusted-artifact validate-v1 validate-v1-static
@@ -45,6 +46,13 @@ validate-kyverno-static:
 		shellcheck scripts/validate-kyverno-static.sh; \
 		./scripts/validate-kyverno-static.sh; \
 	fi
+
+validate-platform-guardrails-static: validate-policy validate-kyverno-static
+	@printf 'ForgePath platform-guardrails static validation passed.\n'
+
+validate-platform-guardrails-runtime: validate-trusted-artifact
+	@$(MAKE) validate-kyverno-runtime
+	@printf 'ForgePath platform-guardrails runtime validation passed.\n'
 
 validate-namespace-protections-static: validate-policy validate-secure-fastapi validate-gitops-static
 	@printf 'ForgePath namespace-protections static validation passed.\n'

@@ -263,8 +263,8 @@ observed_server="$(kube version -o json | jq -r '.serverVersion.gitVersion')"
 log 'loading the trusted application OCI archive without a remote registry'
 kind load image-archive "$artifact_directory/image.oci.tar" --name "$cluster_name"
 docker exec "${cluster_name}-control-plane" ctr --namespace k8s.io images tag \
-  "docker.io/$trusted_repository:0.1.0-local" \
-  "docker.io/$trusted_reference" >/dev/null
+  "$trusted_repository:0.1.0-local" \
+  "$trusted_reference" >/dev/null
 
 require_target_context
 kube create namespace "$workload_namespace" >/dev/null

@@ -33,6 +33,8 @@ workloads contains workload if {
 	workload := {
 		"kind": document.kind,
 		"name": object.get(document.metadata, "name", "<unnamed>"),
+		"metadata": object.get(document, "metadata", {}),
+		"pod_metadata": object.get(document.spec.template, "metadata", {}),
 		"pod_spec": document.spec.template.spec,
 	}
 }
@@ -43,6 +45,8 @@ workloads contains workload if {
 	workload := {
 		"kind": document.kind,
 		"name": object.get(document.metadata, "name", "<unnamed>"),
+		"metadata": object.get(document, "metadata", {}),
+		"pod_metadata": object.get(document.spec.jobTemplate.spec.template, "metadata", {}),
 		"pod_spec": document.spec.jobTemplate.spec.template.spec,
 	}
 }
@@ -53,8 +57,38 @@ workloads contains workload if {
 	workload := {
 		"kind": document.kind,
 		"name": object.get(document.metadata, "name", "<unnamed>"),
+		"metadata": object.get(document, "metadata", {}),
+		"pod_metadata": object.get(document, "metadata", {}),
 		"pod_spec": document.spec,
 	}
+}
+
+required_workload_labels := {
+	"forgepath.dev/owner",
+	"forgepath.dev/system",
+	"forgepath.dev/environment",
+	"forgepath.dev/data-classification",
+}
+
+approved_environments := {"local", "development", "staging", "production"}
+approved_data_classifications := {"public", "internal", "confidential", "restricted"}
+approved_support_tiers := {"1", "2", "3", "4"}
+
+metadata_has_required_labels(metadata) if {
+	labels := object.get(metadata, "labels", {})
+	every label in required_workload_labels {
+		value := object.get(labels, label, "")
+		is_string(value)
+		value != ""
+	}
+}
+
+metadata_values_are_valid(metadata) if {
+	labels := object.get(metadata, "labels", {})
+	object.get(labels, "forgepath.dev/environment", "") in approved_environments
+	object.get(labels, "forgepath.dev/data-classification", "") in approved_data_classifications
+	support_tier := object.get(labels, "forgepath.dev/support-tier", "1")
+	support_tier in approved_support_tiers
 }
 
 workload_containers contains pair if {
@@ -108,6 +142,14 @@ container_has_resources(container) if {
 
 image_is_mutable(image) if {
 	regex.match(`(?i)(^|:)(latest|stable|main|master)$`, image)
+}
+
+image_uses_approved_registry(image) if {
+	regex.match(`^ghcr\.io/securecloudops/[^@]+@sha256:[a-f0-9]{64}$`, image)
+}
+
+image_is_digest_only(image) if {
+	regex.match(`^[^/@]+(:[0-9]+)?(/[^:@]+)+@sha256:[a-f0-9]{64}$`, image)
 }
 
 image_is_mutable(image) if {
@@ -200,6 +242,54 @@ dns_egress_policy_exists if {
 	count(ports) == 2
 	{"protocol": "UDP", "port": 53} in ports
 	{"protocol": "TCP", "port": 53} in ports
+}
+
+deny contains message if {
+	some workload in workloads
+	not metadata_has_required_labels(workload.metadata)
+	message := sprintf(
+		"%s/%s: workload metadata must set owner, system, environment, and data-classification labels",
+		[workload.kind, workload.name],
+	)
+}
+
+deny contains message if {
+	some workload in workloads
+	not metadata_has_required_labels(workload.pod_metadata)
+	message := sprintf(
+		"%s/%s: pod template metadata must set owner, system, environment, and data-classification labels",
+		[workload.kind, workload.name],
+	)
+}
+
+deny contains message if {
+	some workload in workloads
+	metadata_has_required_labels(workload.metadata)
+	not metadata_values_are_valid(workload.metadata)
+	message := sprintf(
+		"%s/%s: workload environment, data-classification, or support-tier label is invalid",
+		[workload.kind, workload.name],
+	)
+}
+
+deny contains message if {
+	some pair in workload_containers
+	image := object.get(pair.container, "image", "")
+	not image_uses_approved_registry(image)
+	message := sprintf(
+		"%s/%s: container %s image %q is not from an approved registry",
+		[pair.workload.kind, pair.workload.name, pair.container.name, image],
+	)
+}
+
+deny contains message if {
+	some pair in workload_containers
+	image := object.get(pair.container, "image", "")
+	not image_is_digest_only(image)
+	message := sprintf(
+		"%s/%s: container %s image must use a sha256 digest only",
+		[pair.workload.kind, pair.workload.name, pair.container.name],
+	)
 }
 
 deny contains message if {

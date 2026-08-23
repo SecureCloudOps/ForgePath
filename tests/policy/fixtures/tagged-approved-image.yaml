@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: tagged-approved-image
+  labels:
+    forgepath.dev/owner: platform
+    forgepath.dev/system: forgepath
+    forgepath.dev/environment: local
+    forgepath.dev/data-classification: internal
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 10001
+  containers:
+    - name: application
+      image: ghcr.io/securecloudops/application:1.0.0
+      securityContext:
+        allowPrivilegeEscalation: false
+        privileged: false
+        capabilities:
+          drop: ["ALL"]
+      resources:
+        requests: {cpu: 100m, memory: 128Mi}
+        limits: {cpu: 500m, memory: 256Mi}

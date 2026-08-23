@@ -81,6 +81,10 @@ serviceaccount-token.yaml|ServiceAccount/serviceaccount-token: must set automoun
 host-network.yaml|Deployment/host-network: hostNetwork is forbidden
 host-pid.yaml|Deployment/host-pid: hostPID is forbidden
 missing-default-deny.yaml|Rendered manifests with workloads must include a namespace-wide default-deny NetworkPolicy
+missing-metadata.yaml|Deployment/missing-metadata: workload metadata must set owner, system, environment, and data-classification labels
+invalid-metadata.yaml|Pod/invalid-metadata: workload environment, data-classification, or support-tier label is invalid
+unapproved-registry.yaml|Pod/unapproved-registry: container application image "docker.io/example/application@sha256:
+tagged-approved-image.yaml|Pod/tagged-approved-image: container application image must use a sha256 digest only
 weak-namespace-boundary.yaml|Rendered manifests with workloads must include a namespace-wide default-deny NetworkPolicy
 weak-namespace-boundary.yaml|Rendered manifests with workloads must include a ResourceQuota
 weak-namespace-boundary.yaml|Rendered manifests with workloads must include a Container LimitRange

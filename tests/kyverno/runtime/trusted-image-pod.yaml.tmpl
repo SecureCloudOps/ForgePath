@@ -1,0 +1,29 @@
+# This fixture is deliberately unsigned when first submitted by the runtime
+# harness. The same resource is retried after signature and provenance upload.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: trusted-image-demo
+  labels:
+    forgepath.dev/owner: platform
+    forgepath.dev/system: forgepath
+    forgepath.dev/environment: local
+    forgepath.dev/data-classification: internal
+    forgepath.dev/support-tier: "2"
+spec:
+  automountServiceAccountToken: false
+  restartPolicy: Never
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 10001
+  containers:
+    - name: application
+      image: __FORGEPATH_DEMO_IMAGE_REFERENCE__
+      securityContext:
+        allowPrivilegeEscalation: false
+        privileged: false
+        capabilities:
+          drop: ["ALL"]
+      resources:
+        requests: {cpu: 100m, memory: 128Mi}
+        limits: {cpu: 500m, memory: 256Mi}

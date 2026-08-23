@@ -14,7 +14,7 @@ done
 
 artifact_parent="$repository_root/.forgepath"
 artifact_directory="$artifact_parent/trusted-artifact"
-image_repository="forgepath/secure-fastapi-service"
+image_repository="ghcr.io/securecloudops/secure-fastapi-service"
 image_tag="$image_repository:0.1.0-local"
 build_input="templates/secure-fastapi-service"
 

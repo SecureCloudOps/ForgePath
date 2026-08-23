@@ -1,9 +1,16 @@
 replicaCount: 20
 
 image:
-  repository: forgepath/secure-fastapi-service
+  repository: ghcr.io/securecloudops/secure-fastapi-service
   digest: "sha256:d971dc0d119a17e9b361906b67eb0fbada2cac6d197ec338620ecfd7e1eeba2c"
   pullPolicy: IfNotPresent
+
+workloadMetadata:
+  owner: platform
+  system: forgepath
+  environment: local
+  dataClassification: internal
+  supportTier: "2"
 
 service:
   port: 80

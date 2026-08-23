@@ -35,8 +35,7 @@ spec:
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: {{ include "service.name" . }}
-        app.kubernetes.io/instance: {{ .Release.Name }}
+        {{- include "service.labels" . | nindent 8 }}
     spec:
       serviceAccountName: {{ include "service.fullname" . }}
       automountServiceAccountToken: false

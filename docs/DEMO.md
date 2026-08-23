@@ -1,5 +1,44 @@
 # ForgePath demonstrations
 
+## Platform-guardrails demonstration
+
+The first guardrail increment establishes who owns a workload and which software
+may execute. Its single admission story is:
+
+```text
+developer submits workload with valid ownership metadata
+  -> trusted-registry digest is unsigned
+  -> denied
+  -> image is signed but has no SLSA provenance
+  -> denied
+  -> signed digest and signed SLSA provenance supplied
+  -> admitted
+  -> the same trusted workload requests privileged execution
+  -> denied
+  -> compliant workload admitted
+```
+
+Offline policy, chart, and negative-fixture proof:
+
+```sh
+make validate-platform-guardrails-static
+```
+
+After explicit approval for the trusted-artifact build and disposable cluster
+mutation:
+
+```sh
+make validate-platform-guardrails-runtime
+```
+
+The harness uses only `forgepath-kyverno`, verifies the exact context, installs
+the checksum-reviewed and digest-pinned Kyverno manifest, and adds a digest-pinned
+registry sidecar for this proof. The registry is reachable only through a local
+port-forward. The one-run Cosign private key remains in a temporary directory,
+is never printed, and is deleted immediately after signing and attestation.
+Cleanup removes the cluster and all temporary material and restores the caller's
+original Kubernetes context.
+
 ## Namespace-isolation demonstration
 
 Offline boundary validation:
@@ -114,10 +153,11 @@ After explicit approval:
 make validate-kyverno-runtime
 ```
 
-The disposable `forgepath-kyverno` cluster admits the compliant Helm rendering
-and rejects privileged, root, mutable-image, missing-resource, host-network,
-and host-PID Pods. It repeats a rejection after restarting the admission
-controller to prove fail-closed enforcement remains active.
+The disposable `forgepath-kyverno` cluster runs the metadata and trusted-image
+sequence above, admits the compliant Helm rendering, and rejects privileged,
+root, mutable-image, missing-resource, host-network, and host-PID Pods. It
+repeats a rejection after restarting the admission controller to prove
+fail-closed enforcement remains active.
 
 ## Screenshot set
 

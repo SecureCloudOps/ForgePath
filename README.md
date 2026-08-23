@@ -23,6 +23,9 @@ Backstage.
 - **GitOps with a constrained feedback loop:** Argo CD and Kyverno control
   delivery while Backstage receives status through a deliberately read-only
   Kubernetes identity.
+- **Platform ownership and trusted execution:** required workload metadata,
+  approved registries, digest-only references, signatures, and SLSA provenance
+  are checked before admission.
 
 ## How it works
 
@@ -86,6 +89,7 @@ Choose **Create → Secure FastAPI service**. Output is confined to
 | --- | --- | --- |
 | Repository foundation | `make validate-foundation` | Required structure, documentation, architecture stages, and shell safety |
 | Paved path and security | `make validate-security` | Tests, scans, schemas, Helm, OPA, and Kyverno CLI negative fixtures |
+| Platform guardrails static | `make validate-platform-guardrails-static` | Required ownership metadata, approved registry and digest-only policy, trusted-image policy structure, and negative fixtures |
 | Namespace protections static | `make validate-namespace-protections-static` | Restricted PSA metadata, namespace-wide deny-all networking, DNS/Prometheus exceptions, quota, limits, and negative fixtures |
 | Namespace protections runtime | `make validate-namespace-protections-runtime` | Disposable Kind proof of service, scrape, and DNS success plus ingress, egress, quota, limit, and restricted-PSA denial |
 | Observability static | `make validate-observability-static` | Prometheus rules, 96.67% degradation fixture, dashboard, Helm resources, and restricted scrape policy |
@@ -96,7 +100,7 @@ Choose **Create → Secure FastAPI service**. Output is confined to
 | Backstage | `make validate-backstage-static` | Pinned app and MkDocs toolchain, rendered TechDocs, catalog, renderer confinement, and permissions |
 | GitOps | `make validate-gitops-static` | Restricted AppProject/Application, trusted digest handoff, render, schema, and policy checks |
 | Backstage + Argo runtime | `make validate-backstage-runtime` | Disposable Kind deployment, reconciliation, read-only Backstage workload and Application status, and RBAC denials |
-| Kyverno runtime | `make validate-kyverno-runtime` | Compliant admission and unsafe Pod rejection through the Kubernetes API |
+| Kyverno runtime | `make validate-kyverno-runtime` | Metadata enforcement; unsigned and unattested image denial; signed, attested digest admission; and unsafe Pod rejection through the Kubernetes API |
 
 GitHub Actions runs the static paved-path security gate, the separately labeled
 online Trivy gate, and the Backstage static gate on pull requests and pushes to
@@ -151,6 +155,7 @@ completion criterion.
 - [Progressive-delivery abort runbook](services/secure-fastapi-service/docs/progressive-delivery.md)
 - [V1 validation evidence](docs/evidence/V1_VALIDATION.md)
 - [V2 observability validation evidence](docs/evidence/V2_VALIDATION.md)
+- [Platform guardrail validation evidence](docs/evidence/PLATFORM_GUARDRAILS.md)
 - [Namespace-isolation validation evidence](docs/evidence/NAMESPACE_ISOLATION.md)
 - [Threat model](docs/THREAT_MODEL.md)
 - [GitOps design and rollback](gitops/README.md)

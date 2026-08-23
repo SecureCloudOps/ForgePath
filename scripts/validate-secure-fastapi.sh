@@ -209,6 +209,15 @@ prometheus_rule_json="$(yq -o=json 'select(.kind == "PrometheusRule")' "$work_di
 dashboard_json="$(yq -r 'select(.kind == "ConfigMap") | .data."slo-dashboard.json"' "$work_directory/manifests.yaml")"
 
 jq -e '
+  .metadata.labels["forgepath.dev/owner"] == "platform" and
+  .metadata.labels["forgepath.dev/system"] == "forgepath" and
+  .metadata.labels["forgepath.dev/environment"] == "local" and
+  .metadata.labels["forgepath.dev/data-classification"] == "internal" and
+  .metadata.labels["forgepath.dev/support-tier"] == "2" and
+  .spec.template.metadata.labels["forgepath.dev/owner"] == "platform" and
+  .spec.template.metadata.labels["forgepath.dev/system"] == "forgepath" and
+  (.spec.template.spec.containers[0].image |
+    test("^ghcr.io/securecloudops/example-fastapi@sha256:[a-f0-9]{64}$")) and
   .spec.template.spec.securityContext.runAsUser == 10001 and
   .spec.template.spec.securityContext.seccompProfile.type == "RuntimeDefault" and
   .spec.template.spec.containers[0].securityContext.readOnlyRootFilesystem == true and

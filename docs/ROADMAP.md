@@ -26,6 +26,19 @@ ForgePath will be built in small, demonstrable increments:
     50%. Static implementation complete.
 13. Run the separately approved defective-v2 runtime proof: 5% canary, SLO
     degradation, failed AnalysisRun, aborted Rollout, and stable v1 traffic.
+    Complete.
+14. Add the first platform-guardrail increment: required workload ownership
+    metadata, approved registries, digest-only images, Cosign signature
+    verification, SLSA provenance verification, and a negative-first admission
+    demonstration. Complete, runtime-proven, and frozen. See the
+    [platform-guardrail validation evidence](evidence/PLATFORM_GUARDRAILS.md).
+15. Add namespace guardrails: restricted Pod Security Admission, ResourceQuota,
+    LimitRange, default-deny networking, DNS-only application egress, and
+    narrowly scoped observability. Complete, runtime-proven, and frozen. See the
+    [namespace-isolation validation evidence](evidence/NAMESPACE_ISOLATION.md).
+16. Add workload RBAC boundaries and explicit negative authorization tests.
+17. Add the time-bounded, owner-approved, narrowly scoped exception mechanism
+    with expiry failure tests.
 
 Details will be designed only when each increment begins. The project will favor
 one complete, secure path over broad platform scope.
