@@ -96,6 +96,7 @@ weak-namespace-boundary.yaml|Rendered manifests with workloads must include a Re
 weak-namespace-boundary.yaml|Rendered manifests with workloads must include a Container LimitRange
 weak-namespace-boundary.yaml|Rendered manifests with monitored workloads must restrict Prometheus ingress
 weak-namespace-boundary.yaml|Rendered manifests with workloads must allow egress only to kube-system DNS pods
+weak-namespace-boundary.yaml|Rendered manifests with progressive workloads must allow only the Rollouts controller to query Prometheus
 POLICY_FIXTURES
 
 printf 'ForgePath Kubernetes policy validation passed.\n'

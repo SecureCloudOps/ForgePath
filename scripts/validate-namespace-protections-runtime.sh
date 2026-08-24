@@ -243,8 +243,8 @@ kube apply -f "$boundary_resources" >/dev/null
 
 [[ "$(kube get namespace "$workload_namespace" -o jsonpath='{.metadata.labels.pod-security\.kubernetes\.io/enforce}')" == 'restricted' ]] ||
   fail 'workload namespace did not start with restricted Pod Security enforcement'
-[[ "$(kube -n "$workload_namespace" get networkpolicy -o name | wc -l | tr -d ' ')" == '3' ]] ||
-  fail 'workload namespace must start with exactly three network policies'
+[[ "$(kube -n "$workload_namespace" get networkpolicy -o name | wc -l | tr -d ' ')" == '4' ]] ||
+  fail 'workload namespace must start with exactly four platform network policies'
 kube -n "$workload_namespace" get resourcequota forgepath-namespace-boundary >/dev/null
 kube -n "$workload_namespace" get limitrange forgepath-namespace-boundary >/dev/null
 log 'PASS compliant namespace started with restricted PSA, quota, limits, and deny-all networking'

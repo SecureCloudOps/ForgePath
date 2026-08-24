@@ -4,7 +4,8 @@
 It is evaluated with Conftest in combined-input mode across the platform-owned
 namespace prerequisite and application render. The combined boundary must
 include a namespace-wide default-deny NetworkPolicy, ResourceQuota, LimitRange,
-a dual-selector Prometheus scrape exception, and a DNS-only egress exception.
+a dual-selector Prometheus scrape exception, DNS-only application egress, and
+one Rollouts-controller-to-Prometheus egress exception on TCP 9090.
 The application chart is separately required to contain none of those
 platform-owned resources.
 

@@ -94,9 +94,10 @@ validate_platform_namespace() {
 
   documents="$(yq -o=json -I=0 'select(. != null)' "$candidate")"
   jq -se --arg namespace "$intended_namespace" '
-    length == 6 and
+    length == 7 and
     ([.[] | [(.apiVersion | split("/") | if length == 1 then "" else .[0] end), .kind]] | sort) ==
       [["", "LimitRange"], ["", "Namespace"], ["", "ResourceQuota"],
+       ["networking.k8s.io", "NetworkPolicy"],
        ["networking.k8s.io", "NetworkPolicy"],
        ["networking.k8s.io", "NetworkPolicy"],
        ["networking.k8s.io", "NetworkPolicy"]] and
@@ -110,7 +111,14 @@ validate_platform_namespace() {
       .metadata.labels["pod-security.kubernetes.io/warn"] == "restricted") and
     all(.[] | select(.kind != "Namespace");
       .metadata.namespace == $namespace and
-      .metadata.labels["forgepath.dev/managed-by"] == "platform")
+      .metadata.labels["forgepath.dev/managed-by"] == "platform") and
+    any(.[]; .kind == "NetworkPolicy" and
+      .metadata.name == "forgepath-platform-allow-rollouts-prometheus-egress" and
+      .spec.podSelector.matchLabels["app.kubernetes.io/name"] == "argo-rollouts" and
+      .spec.egress == [{"to": [{"namespaceSelector": {"matchLabels":
+        {"kubernetes.io/metadata.name": "monitoring"}}, "podSelector": {"matchLabels":
+        {"app.kubernetes.io/name": "prometheus"}}}],
+        "ports": [{"protocol": "TCP", "port": 9090}]}])
   ' <<<"$documents" >/dev/null
 }
 

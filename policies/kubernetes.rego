@@ -227,7 +227,7 @@ prometheus_ingress_policy_exists if {
 }
 
 dns_egress_policy_exists if {
-	count(network_policy_egress_rules) == 1
+	count(network_policy_egress_rules) == 2
 	some document in documents
 	document.kind == "NetworkPolicy"
 	count(object.get(document.spec, "podSelector", {})) == 0
@@ -242,6 +242,21 @@ dns_egress_policy_exists if {
 	count(ports) == 2
 	{"protocol": "UDP", "port": 53} in ports
 	{"protocol": "TCP", "port": 53} in ports
+}
+
+rollouts_prometheus_egress_policy_exists if {
+	count(network_policy_egress_rules) == 2
+	some document in documents
+	document.kind == "NetworkPolicy"
+	object.get(document.spec, "podSelector", {}) == {"matchLabels": {"app.kubernetes.io/name": "argo-rollouts"}}
+	object.get(document.spec, "policyTypes", []) == ["Egress"]
+	count(object.get(document.spec, "egress", [])) == 1
+	egress := document.spec.egress[0]
+	count(object.get(egress, "to", [])) == 1
+	peer := egress.to[0]
+	object.get(object.get(object.get(peer, "namespaceSelector", {}), "matchLabels", {}), "kubernetes.io/metadata.name", "") == "monitoring"
+	object.get(object.get(object.get(peer, "podSelector", {}), "matchLabels", {}), "app.kubernetes.io/name", "") == "prometheus"
+	object.get(egress, "ports", []) == [{"protocol": "TCP", "port": 9090}]
 }
 
 deny contains message if {
@@ -409,4 +424,9 @@ deny contains "Rendered manifests with monitored workloads must restrict Prometh
 deny contains "Rendered manifests with workloads must allow egress only to kube-system DNS pods on UDP and TCP port 53" if {
 	count(workloads) > 0
 	not dns_egress_policy_exists
+}
+
+deny contains "Rendered manifests with progressive workloads must allow only the Rollouts controller to query Prometheus on TCP port 9090" if {
+	count(workloads) > 0
+	not rollouts_prometheus_egress_policy_exists
 }

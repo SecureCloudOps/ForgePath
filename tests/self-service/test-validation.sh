@@ -173,14 +173,18 @@ fi
 
 platform_namespace="$gitops_repo/platform/namespaces/payments-api-development.yaml"
 yq -o=json -I=0 'select(. != null)' "$platform_namespace" | jq -se '
-  length == 6 and
+  length == 7 and
   any(.[]; .kind == "Namespace" and
     .metadata.name == "payments-api-development" and
     .metadata.labels["forgepath.dev/managed-by"] == "platform" and
     .metadata.labels["pod-security.kubernetes.io/enforce"] == "restricted") and
   all(.[] | select(.kind != "Namespace");
     .metadata.namespace == "payments-api-development" and
-    .metadata.labels["forgepath.dev/managed-by"] == "platform")
+    .metadata.labels["forgepath.dev/managed-by"] == "platform") and
+  any(.[]; .kind == "NetworkPolicy" and
+    .metadata.name == "forgepath-platform-allow-rollouts-prometheus-egress" and
+    .spec.podSelector.matchLabels["app.kubernetes.io/name"] == "argo-rollouts" and
+    .spec.egress[0].ports == [{"protocol": "TCP", "port": 9090}])
 ' >/dev/null
 
 rendered_chart="$work_directory/generated-application-manifests.yaml"

@@ -284,6 +284,25 @@ spec:
       ports:
         - {{protocol: UDP, port: 53}}
         - {{protocol: TCP, port: 53}}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: forgepath-platform-allow-rollouts-prometheus-egress
+  namespace: {namespace}
+  labels: {{forgepath.dev/managed-by: platform}}
+spec:
+  podSelector:
+    matchLabels: {{app.kubernetes.io/name: argo-rollouts}}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: {{kubernetes.io/metadata.name: monitoring}}
+          podSelector:
+            matchLabels: {{app.kubernetes.io/name: prometheus}}
+      ports:
+        - {{protocol: TCP, port: 9090}}
 """
 
 

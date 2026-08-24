@@ -285,7 +285,8 @@ kube -n "$workload_namespace" get resourcequota/forgepath-namespace-boundary \
   limitrange/forgepath-namespace-boundary \
   networkpolicy/forgepath-platform-default-deny \
   networkpolicy/forgepath-platform-allow-prometheus \
-  networkpolicy/forgepath-platform-allow-dns >/dev/null
+  networkpolicy/forgepath-platform-allow-dns \
+  networkpolicy/forgepath-platform-allow-rollouts-prometheus-egress >/dev/null
 
 log 'submitting one local developer self-service request'
 request_started="$(python3.12 -c 'import time; print(time.time())')"

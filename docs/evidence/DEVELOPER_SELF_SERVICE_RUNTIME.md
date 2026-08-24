@@ -45,7 +45,18 @@ longer permits them.
 
 ## Approved rerun
 
-Pending. The rerun must prove the governed namespace exists before the single
+The first remediation rerun provisioned the governed namespace, generated the
+local repositories and PR-ready branches, reconciled the Rollout Healthy in
+`94.533s`, and proved Prometheus visibility with 322 canary errors, burn rate
+`49.82977406375731`, and the fast-burn alert firing. It then failed safely when
+the namespace-scoped Rollouts controller could not query Prometheus through the
+platform default-deny policy; the AnalysisRun ended `Error` on a ten-second
+timeout. The cluster was deleted and the original context restored.
+
+The follow-up keeps default deny and adds one platform-owned egress exception:
+only the Rollouts controller pod label may reach only Prometheus pods in the
+`monitoring` namespace on TCP 9090. The final rerun must prove the governed
+namespace exists before the single
 developer request, Argo CD reconciles only namespaced application resources,
 the Rollout becomes Healthy, Prometheus exposes the SLO, and the measured
 request-to-healthy duration is recorded without requiring developer `kubectl`.
