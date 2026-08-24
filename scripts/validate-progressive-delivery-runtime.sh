@@ -123,6 +123,19 @@ wait_pod_label() {
   fail "pod selector did not appear in $namespace: $selector"
 }
 
+wait_runtime_git() {
+  local deadline=$((SECONDS + 120))
+  while ((SECONDS < deadline)); do
+    if kube -n "$argocd_namespace" exec deployment/argocd-repo-server \
+      -c argocd-repo-server -- git ls-remote "$runtime_repo_url" HEAD \
+      >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 2
+  done
+  fail 'temporary Git remote did not become reachable from Argo CD'
+}
+
 wait_http() {
   local process_id="$1" url="$2" log_file="$3" deadline=$((SECONDS + 180))
   while ((SECONDS < deadline)); do
@@ -386,6 +399,7 @@ EOF
 kube -n "$argocd_namespace" patch deployment argocd-repo-server --type strategic \
   --patch-file "$runtime_directory/repo-server-patch.yaml" >/dev/null
 wait_deployment "$argocd_namespace" argocd-repo-server
+wait_runtime_git
 RUNTIME_REPO_URL="$runtime_repo_url" yq '.spec.sourceRepos = [strenv(RUNTIME_REPO_URL)]' \
   gitops/projects/forgepath-local.yaml >"$runtime_directory/project.yaml"
 RUNTIME_REPO_URL="$runtime_repo_url" yq '.spec.source.repoURL = strenv(RUNTIME_REPO_URL)' \
