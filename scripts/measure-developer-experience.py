@@ -16,6 +16,10 @@ def main() -> None:
     metrics = publication["developerExperience"]
     report = {
         "measurementMode": publication["mode"],
+        "requestToRepositorySeconds": metrics["requestToRepositorySeconds"],
+        "requestToFirstPullRequestSeconds": metrics[
+            "requestToFirstPullRequestSeconds"
+        ],
         "timeToCreateServiceSeconds": metrics["requestToPublishedSeconds"],
         "manualSteps": metrics["manualSteps"],
         "securityControlsAutomaticallyInherited": metrics[

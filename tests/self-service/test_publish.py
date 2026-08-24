@@ -128,6 +128,7 @@ class GitHubPublisherContractTest(unittest.TestCase):
                     {
                         "applications/payments-api-development.yaml",
                         "projects/forgepath-payments-api-development.yaml",
+                        "platform/namespaces/payments-api-development.yaml",
                         "environments/development/payments-api/values.yaml",
                         "environments/development/payments-api/request.json",
                     },

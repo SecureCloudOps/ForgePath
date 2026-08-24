@@ -6,13 +6,10 @@
 - The container runs as UID/GID 10001 and does not need a writable root filesystem.
 - The pod uses RuntimeDefault seccomp, drops all capabilities, disallows privilege
   escalation, and does not mount a service account token.
-- The namespace-wide NetworkPolicy denies ingress and egress by default.
-- DNS egress is limited to kube-system DNS pods on UDP/TCP 53; the generated
-  application has no other egress exception.
-- Prometheus ingress requires both the monitoring namespace and Prometheus pod
-  labels and is restricted to TCP 8080.
-- ResourceQuota and LimitRange bound aggregate namespace consumption and each
-  container's CPU and memory allocation.
+- The platform-owned namespace prerequisite supplies restricted PSA labels,
+  ResourceQuota, LimitRange, default-deny networking, DNS egress, and narrowly
+  selected Prometheus ingress before application reconciliation.
+- The application chart cannot create or modify that namespace boundary.
 - Resource requests and limits reduce noisy-neighbor and exhaustion risk.
 - The application has no Kubernetes API requirement, receives no Role or
   RoleBinding, and keeps controller permissions on separate platform identities.

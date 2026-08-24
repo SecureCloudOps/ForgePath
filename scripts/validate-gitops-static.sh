@@ -28,6 +28,7 @@ chart="$repository_root/services/secure-fastapi-service/chart"
 values="$repository_root/gitops/environments/local/secure-fastapi-service/values.yaml"
 project="$repository_root/gitops/projects/forgepath-local.yaml"
 application="$repository_root/gitops/applications/secure-fastapi-service-local.yaml"
+platform_namespace="$repository_root/gitops/platform/namespaces/secure-fastapi-service-local.yaml"
 metadata="${TRUSTED_ARTIFACT_METADATA:-$repository_root/.forgepath/trusted-artifact/metadata.json}"
 schema_directory="$repository_root/gitops/schemas/kubernetes/v1.32.0-standalone-strict"
 work_directory="$(mktemp -d)"
@@ -50,13 +51,11 @@ validate_argocd() {
       .metadata.namespace == "argocd" and
       .spec.sourceRepos == [$repo] and
       .spec.destinations == [{"namespace": $namespace, "server": $server}] and
-      (.spec.namespaceResourceWhitelist | length) == 10 and
+      (.spec.namespaceResourceWhitelist | length) == 7 and
       ([.spec.namespaceResourceWhitelist[] | [.group, .kind]] | sort) ==
-        [["", "ConfigMap"], ["", "LimitRange"], ["", "ResourceQuota"],
-         ["", "Service"], ["", "ServiceAccount"],
+        [["", "ConfigMap"], ["", "Service"], ["", "ServiceAccount"],
          ["argoproj.io", "AnalysisTemplate"], ["argoproj.io", "Rollout"],
-         ["monitoring.coreos.com", "PrometheusRule"], ["monitoring.coreos.com", "ServiceMonitor"],
-         ["networking.k8s.io", "NetworkPolicy"]] and
+         ["monitoring.coreos.com", "PrometheusRule"], ["monitoring.coreos.com", "ServiceMonitor"]] and
       .spec.clusterResourceBlacklist == [{"group": "*", "kind": "*"}] and
       (.spec.clusterResourceWhitelist == null)
     ' >/dev/null || return 1
@@ -78,22 +77,41 @@ validate_argocd() {
       .spec.destination == {"server": $server, "namespace": $namespace} and
       .spec.syncPolicy.automated.prune == true and
       .spec.syncPolicy.automated.selfHeal == true and
-      .spec.syncPolicy.managedNamespaceMetadata.labels == {
-        "pod-security.kubernetes.io/enforce": "restricted",
-        "pod-security.kubernetes.io/enforce-version": "v1.32",
-        "pod-security.kubernetes.io/audit": "restricted",
-        "pod-security.kubernetes.io/audit-version": "v1.32",
-        "pod-security.kubernetes.io/warn": "restricted",
-        "pod-security.kubernetes.io/warn-version": "v1.32"
-      } and
-      ((.spec.syncPolicy.syncOptions // []) | index("CreateNamespace=true") != null) and
-      ((.spec.syncPolicy.syncOptions // []) | index("ApplyOutOfSyncOnly=true") != null)
+      (.spec.syncPolicy.managedNamespaceMetadata == null) and
+      (.spec.syncPolicy.syncOptions == ["ApplyOutOfSyncOnly=true"]) and
+      ((.spec.syncPolicy.syncOptions // []) | index("CreateNamespace=true") == null)
     ' >/dev/null || return 1
 
   if rg -l '^kind:[[:space:]]*ApplicationSet[[:space:]]*$' gitops >/dev/null; then
     printf 'ApplicationSet is not authorized for the current single-service model\n' >&2
     return 1
   fi
+}
+
+validate_platform_namespace() {
+  local candidate="$1"
+  local documents
+
+  documents="$(yq -o=json -I=0 'select(. != null)' "$candidate")"
+  jq -se --arg namespace "$intended_namespace" '
+    length == 6 and
+    ([.[] | [(.apiVersion | split("/") | if length == 1 then "" else .[0] end), .kind]] | sort) ==
+      [["", "LimitRange"], ["", "Namespace"], ["", "ResourceQuota"],
+       ["networking.k8s.io", "NetworkPolicy"],
+       ["networking.k8s.io", "NetworkPolicy"],
+       ["networking.k8s.io", "NetworkPolicy"]] and
+    ([.[] | select(.kind == "Namespace")] | length) == 1 and
+    all(.[] | select(.kind == "Namespace");
+      .metadata.name == $namespace and
+      .metadata.labels["forgepath.dev/managed-by"] == "platform" and
+      .metadata.labels["pod-security.kubernetes.io/enforce"] == "restricted" and
+      .metadata.labels["pod-security.kubernetes.io/enforce-version"] == "v1.32" and
+      .metadata.labels["pod-security.kubernetes.io/audit"] == "restricted" and
+      .metadata.labels["pod-security.kubernetes.io/warn"] == "restricted") and
+    all(.[] | select(.kind != "Namespace");
+      .metadata.namespace == $namespace and
+      .metadata.labels["forgepath.dev/managed-by"] == "platform")
+  ' <<<"$documents" >/dev/null
 }
 
 read_trusted_reference() {
@@ -133,17 +151,19 @@ authorize_rendered() {
     return 1
   fi
 
+  if jq -se 'any(.[]; .kind == "Namespace")' <<<"$documents" >/dev/null; then
+    printf 'application chart must never render Namespace; namespace lifecycle is platform-owned\n' >&2
+    return 1
+  fi
+
   if ! jq -se --arg namespace "$intended_namespace" '
-    length == 13 and
+    length == 8 and
     all(.[ ]; .apiVersion and .kind and .metadata.name) and
     all(.[ ]; (.metadata.namespace // $namespace) == $namespace) and
     ([.[] | [(.apiVersion | split("/") | if length == 1 then "" else .[0] end), .kind]] | sort) ==
-      [["", "ConfigMap"], ["", "LimitRange"], ["", "ResourceQuota"],
-       ["", "Service"], ["", "Service"], ["", "ServiceAccount"],
+      [["", "ConfigMap"], ["", "Service"], ["", "Service"], ["", "ServiceAccount"],
        ["argoproj.io", "AnalysisTemplate"], ["argoproj.io", "Rollout"],
-       ["monitoring.coreos.com", "PrometheusRule"], ["monitoring.coreos.com", "ServiceMonitor"],
-       ["networking.k8s.io", "NetworkPolicy"], ["networking.k8s.io", "NetworkPolicy"],
-       ["networking.k8s.io", "NetworkPolicy"]]
+       ["monitoring.coreos.com", "PrometheusRule"], ["monitoring.coreos.com", "ServiceMonitor"]]
   ' <<<"$documents" >/dev/null; then
     printf 'rendered resources exceed the AppProject namespace/kind allowlist\n' >&2
     return 1
@@ -177,6 +197,7 @@ render_and_validate() {
   local output="$2"
   local trusted_reference="$3"
   local generated_service="$work_directory/generated-service"
+  local combined="$work_directory/combined.yaml"
   local metadata_repository metadata_digest marker_digest values_repository values_digest
 
   metadata_repository="$(jq -er '.image.repository' "$metadata")"
@@ -212,7 +233,11 @@ render_and_validate() {
     -skip AnalysisTemplate,PrometheusRule,Rollout,ServiceMonitor \
     -schema-location "file://$schema_directory/{{.ResourceKind}}{{.KindSuffix}}.json" \
     "$output" >/dev/null || return 1
-  conftest test --combine --policy policies "$output" >/dev/null || return 1
+  validate_platform_namespace "$platform_namespace" || return 1
+  cp "$platform_namespace" "$combined"
+  printf '\n---\n' >>"$combined"
+  cat "$output" >>"$combined"
+  conftest test --combine --policy policies "$combined" >/dev/null || return 1
   authorize_rendered "$output" "$trusted_reference"
 }
 
@@ -238,7 +263,9 @@ run_negative_suite() {
   local unauthorized_namespace="$work_directory/unauthorized-namespace.yaml"
   local unauthorized_repository="$work_directory/unauthorized-repository.yaml"
   local missing_psa="$work_directory/missing-psa.yaml"
-  local missing_namespace_creation="$work_directory/missing-namespace-creation.yaml"
+  local namespace_creation_enabled="$work_directory/namespace-creation-enabled.yaml"
+  local namespace_permission="$work_directory/namespace-permission.yaml"
+  local namespace_in_chart="$work_directory/namespace-in-chart.yaml"
   local secret_manifests="$work_directory/secret-manifests.yaml"
   local cluster_manifests="$work_directory/cluster-manifests.yaml"
   local policy_violation="$work_directory/policy-violation.yaml"
@@ -261,15 +288,26 @@ run_negative_suite() {
   expect_rejection 'unauthorized repository' validate_argocd \
     "$project" "$unauthorized_repository"
 
-  yq 'del(.spec.syncPolicy.managedNamespaceMetadata.labels."pod-security.kubernetes.io/enforce")' \
-    "$application" >"$missing_psa"
-  expect_rejection 'missing restricted Pod Security enforcement' validate_argocd \
-    "$project" "$missing_psa"
+  yq 'del((select(.kind == "Namespace") | .metadata.labels."pod-security.kubernetes.io/enforce"))' \
+    "$platform_namespace" >"$missing_psa"
+  expect_rejection 'missing platform-owned restricted Pod Security enforcement' \
+    validate_platform_namespace "$missing_psa"
 
-  yq '.spec.syncPolicy.syncOptions -= ["CreateNamespace=true"]' \
-    "$application" >"$missing_namespace_creation"
-  expect_rejection 'namespace creation without managed security metadata' validate_argocd \
-    "$project" "$missing_namespace_creation"
+  yq '.spec.syncPolicy.syncOptions += ["CreateNamespace=true"]' \
+    "$application" >"$namespace_creation_enabled"
+  expect_rejection 'CreateNamespace=true reappeared' validate_argocd \
+    "$project" "$namespace_creation_enabled"
+
+  yq '.spec.clusterResourceWhitelist = [{"group": "", "kind": "Namespace"}]' \
+    "$project" >"$namespace_permission"
+  expect_rejection 'application AppProject namespace creation permission' validate_argocd \
+    "$namespace_permission" "$application"
+
+  cp "$rendered" "$namespace_in_chart"
+  printf '\n---\napiVersion: v1\nkind: Namespace\nmetadata:\n  name: forbidden\n' \
+    >>"$namespace_in_chart"
+  expect_rejection 'application chart Namespace manifest' authorize_rendered \
+    "$namespace_in_chart" "$trusted_reference"
 
   cp "$rendered" "$secret_manifests"
   printf '\n---\napiVersion: v1\nkind: Secret\nmetadata:\n  name: forbidden\ntype: Opaque\n' \
@@ -289,6 +327,7 @@ run_negative_suite() {
 }
 
 validate_argocd "$project" "$application"
+validate_platform_namespace "$platform_namespace"
 trusted_reference="$(read_trusted_reference)"
 rendered="$work_directory/rendered.yaml"
 render_and_validate "$values" "$rendered" "$trusted_reference"

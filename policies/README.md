@@ -1,10 +1,12 @@
 # ForgePath Kubernetes policy
 
 `kubernetes.rego` is the centralized ForgePath policy for Kubernetes workloads.
-It is evaluated with Conftest in combined-input mode so rules can reason across
-the complete Helm-rendered resource set, including the requirement for a
-namespace-wide default-deny NetworkPolicy, ResourceQuota, LimitRange, a
-dual-selector Prometheus scrape exception, and a DNS-only egress exception.
+It is evaluated with Conftest in combined-input mode across the platform-owned
+namespace prerequisite and application render. The combined boundary must
+include a namespace-wide default-deny NetworkPolicy, ResourceQuota, LimitRange,
+a dual-selector Prometheus scrape exception, and a DNS-only egress exception.
+The application chart is separately required to contain none of those
+platform-owned resources.
 
 Run the policy gate from the repository root:
 

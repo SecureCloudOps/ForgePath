@@ -54,6 +54,12 @@ ForgePath will be built in small, demonstrable increments:
     The Phase 4 static implementation was frozen on 2026-08-24. Runtime proof
     may add evidence only; source changes require a new roadmap increment and
     checkpoint.
+19. Redesign namespace ownership after the first approved runtime proof exposed
+    an Application/AppProject conflict: platform owns namespace lifecycle, PSA,
+    quota, limits, and network policy; applications own only namespaced workload
+    and SLO resources. Static remediation complete; runtime rerun pending.
+    Preserve the failed proof and remediation evidence in
+    [developer self-service runtime evidence](evidence/DEVELOPER_SELF_SERVICE_RUNTIME.md).
 
 Details will be designed only when each increment begins. The project will favor
 one complete, secure path over broad platform scope.

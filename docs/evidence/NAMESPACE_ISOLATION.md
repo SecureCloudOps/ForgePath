@@ -1,5 +1,12 @@
 # Namespace-isolation validation evidence
 
+> Historical evidence: this document records the ownership model proven on
+> 2026-08-23. A later developer-self-service runtime exposed a conflict between
+> Argo-managed namespace creation and the zero-cluster-permission AppProject.
+> ForgePath preserved this result and moved namespace lifecycle and controls to
+> a platform-owned prerequisite; see
+> [developer self-service runtime evidence](DEVELOPER_SELF_SERVICE_RUNTIME.md).
+
 The ForgePath namespace-isolation increment was validated on 2026-08-23 and is
 frozen. Its scope is Pod Security Admission, aggregate and per-container
 resource governance, default-deny networking, DNS-only application egress, and

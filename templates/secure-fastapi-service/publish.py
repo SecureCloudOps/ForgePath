@@ -119,6 +119,8 @@ kind: Application
 metadata:
   name: {namespace}
   namespace: argocd
+  annotations:
+    forgepath.dev/namespace-prerequisite: platform/namespaces/{namespace}.yaml
   labels:
     app.kubernetes.io/name: {args.service_name}
     app.kubernetes.io/part-of: {args.system}
@@ -142,16 +144,7 @@ spec:
     automated:
       prune: true
       selfHeal: true
-    managedNamespaceMetadata:
-      labels:
-        pod-security.kubernetes.io/enforce: restricted
-        pod-security.kubernetes.io/enforce-version: v1.32
-        pod-security.kubernetes.io/audit: restricted
-        pod-security.kubernetes.io/audit-version: v1.32
-        pod-security.kubernetes.io/warn: restricted
-        pod-security.kubernetes.io/warn-version: v1.32
     syncOptions:
-      - CreateNamespace=true
       - ApplyOutOfSyncOnly=true
 """
 
@@ -177,10 +170,6 @@ spec:
     - group: ""
       kind: ConfigMap
     - group: ""
-      kind: LimitRange
-    - group: ""
-      kind: ResourceQuota
-    - group: ""
       kind: Service
     - group: ""
       kind: ServiceAccount
@@ -192,11 +181,109 @@ spec:
       kind: PrometheusRule
     - group: monitoring.coreos.com
       kind: ServiceMonitor
-    - group: networking.k8s.io
-      kind: NetworkPolicy
   clusterResourceBlacklist:
     - group: "*"
       kind: "*"
+"""
+
+
+def namespace_prerequisite_yaml(args: argparse.Namespace) -> str:
+    namespace = f"{args.service_name}-{args.environment}"
+    return f"""apiVersion: v1
+kind: Namespace
+metadata:
+  name: {namespace}
+  labels:
+    forgepath.dev/managed-by: platform
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: v1.32
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/audit-version: v1.32
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: v1.32
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: forgepath-namespace-boundary
+  namespace: {namespace}
+  labels: {{forgepath.dev/managed-by: platform}}
+spec:
+  hard:
+    requests.cpu: "4"
+    requests.memory: 4Gi
+    limits.cpu: "12"
+    limits.memory: 6Gi
+    pods: "30"
+    services: "10"
+    configmaps: "20"
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: forgepath-namespace-boundary
+  namespace: {namespace}
+  labels: {{forgepath.dev/managed-by: platform}}
+spec:
+  limits:
+    - type: Container
+      defaultRequest: {{cpu: 100m, memory: 128Mi}}
+      default: {{cpu: 500m, memory: 256Mi}}
+      min: {{cpu: 10m, memory: 32Mi}}
+      max: {{cpu: "1", memory: 512Mi}}
+      maxLimitRequestRatio: {{cpu: "5", memory: "2"}}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: forgepath-platform-default-deny
+  namespace: {namespace}
+  labels: {{forgepath.dev/managed-by: platform}}
+spec:
+  podSelector: {{}}
+  policyTypes: [Ingress, Egress]
+  ingress: []
+  egress: []
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: forgepath-platform-allow-prometheus
+  namespace: {namespace}
+  labels: {{forgepath.dev/managed-by: platform}}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: {args.service_name}
+      app.kubernetes.io/instance: {args.service_name}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: {{kubernetes.io/metadata.name: monitoring}}
+          podSelector:
+            matchLabels: {{app.kubernetes.io/name: prometheus}}
+      ports:
+        - {{protocol: TCP, port: 8080}}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: forgepath-platform-allow-dns
+  namespace: {namespace}
+  labels: {{forgepath.dev/managed-by: platform}}
+spec:
+  podSelector: {{}}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: {{kubernetes.io/metadata.name: kube-system}}
+          podSelector:
+            matchLabels: {{k8s-app: kube-dns}}
+      ports:
+        - {{protocol: UDP, port: 53}}
+        - {{protocol: TCP, port: 53}}
 """
 
 
@@ -206,6 +293,7 @@ def gitops_files(args: argparse.Namespace) -> dict[str, bytes]:
     return {
         f"applications/{args.service_name}-{args.environment}.yaml": application_yaml(args).encode(),
         f"projects/forgepath-{args.service_name}-{args.environment}.yaml": project_yaml(args).encode(),
+        f"platform/namespaces/{args.service_name}-{args.environment}.yaml": namespace_prerequisite_yaml(args).encode(),
         f"{base}/values.yaml": values,
         f"{base}/request.json": json.dumps(
             {
@@ -243,6 +331,7 @@ def local_publish(args: argparse.Namespace, started: float) -> dict[str, Any]:
     service_repo = root / "service-repository"
     gitops_repo = root / "gitops-repository"
     initialize_repository(service_repo)
+    request_to_repository = round(time.monotonic() - started, 3)
     shutil.copytree(args.source, service_repo, dirs_exist_ok=True)
     run_git(service_repo, "add", ".")
     run_git(service_repo, "commit", "-m", "Create secure FastAPI service")
@@ -252,6 +341,7 @@ def local_publish(args: argparse.Namespace, started: float) -> dict[str, Any]:
     run_git(service_repo, "add", ".forgepath/onboarding.yaml")
     run_git(service_repo, "commit", "-m", "Request protected delivery enablement")
     service_commit = run_git(service_repo, "rev-parse", "HEAD")
+    request_to_first_pull_request = round(time.monotonic() - started, 3)
 
     initialize_repository(gitops_repo)
     (gitops_repo / "README.md").write_text(
@@ -284,6 +374,8 @@ def local_publish(args: argparse.Namespace, started: float) -> dict[str, Any]:
             "manualSteps": 1,
             "securityControlsInherited": 9,
             "kubernetesManifestsDevelopersMustUnderstand": 0,
+            "requestToRepositorySeconds": request_to_repository,
+            "requestToFirstPullRequestSeconds": request_to_first_pull_request,
             "requestToPublishedSeconds": round(time.monotonic() - started, 3),
             "requestToHealthySeconds": None,
         },
@@ -389,6 +481,7 @@ def github_publish(args: argparse.Namespace, started: float) -> dict[str, Any]:
             "auto_init": False,
         },
     )
+    request_to_repository = round(time.monotonic() - started, 3)
     main_sha = github.create_commit(
         repository, "main", source_files(args.source), "Create secure FastAPI service"
     )
@@ -413,6 +506,7 @@ def github_publish(args: argparse.Namespace, started: float) -> dict[str, Any]:
             "body": "Enables the reviewed trusted-artifact and GitOps delivery contract.",
         },
     )
+    request_to_first_pull_request = round(time.monotonic() - started, 3)
     github.request(
         "PUT",
         f"/repos/{repository}/branches/main/protection",
@@ -484,6 +578,8 @@ def github_publish(args: argparse.Namespace, started: float) -> dict[str, Any]:
             "manualSteps": 1,
             "securityControlsInherited": 9,
             "kubernetesManifestsDevelopersMustUnderstand": 0,
+            "requestToRepositorySeconds": request_to_repository,
+            "requestToFirstPullRequestSeconds": request_to_first_pull_request,
             "requestToPublishedSeconds": round(time.monotonic() - started, 3),
             "requestToHealthySeconds": None,
         },

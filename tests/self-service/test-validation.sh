@@ -106,6 +106,9 @@ jq -e '
   .developerExperience.manualSteps == 1 and
   .developerExperience.securityControlsInherited == 9 and
   .developerExperience.kubernetesManifestsDevelopersMustUnderstand == 0 and
+  .developerExperience.requestToRepositorySeconds >= 0 and
+  .developerExperience.requestToFirstPullRequestSeconds >=
+    .developerExperience.requestToRepositorySeconds and
   .developerExperience.requestToPublishedSeconds >= 0 and
   .developerExperience.requestToHealthySeconds == null and
   (.servicePullRequest.requiredChecks | contains([
@@ -129,7 +132,6 @@ for required in \
   chart/templates/rollout.yaml \
   chart/templates/servicemonitor.yaml \
   chart/templates/prometheusrule.yaml \
-  chart/templates/networkpolicy.yaml \
   chart/templates/serviceaccount.yaml; do
   test -s "$service_repo/$required" || fail "generated paved-path file is missing: $required"
 done
@@ -140,16 +142,19 @@ yq -e '
   .spec.delivery.promotion == "git-digest-pull-request" and
   (.spec.controls | length) == 9
 ' "$service_repo/.forgepath/onboarding.yaml" >/dev/null
-# $values is an Argo CD multi-source value-file reference, not a shell variable.
-# shellcheck disable=SC2016
-yq -e '
+yq -o=json '.' "$gitops_repo/applications/payments-api-development.yaml" | jq -e '
   .spec.sources[0].helm.valueFiles[0] ==
     "$values/environments/development/payments-api/values.yaml" and
   .spec.sources[1].ref == "values" and
   .spec.syncPolicy.automated.prune == true and
   .spec.syncPolicy.automated.selfHeal == true and
+  .spec.syncPolicy.syncOptions == ["ApplyOutOfSyncOnly=true"] and
   .spec.destination.namespace == "payments-api-development"
-' "$gitops_repo/applications/payments-api-development.yaml" >/dev/null
+' >/dev/null
+if rg -n 'CreateNamespace=true|managedNamespaceMetadata' \
+  "$gitops_repo/applications/payments-api-development.yaml" >/dev/null; then
+  fail 'generated Application attempted to own namespace lifecycle'
+fi
 yq -o=json '.' \
   "$gitops_repo/projects/forgepath-payments-api-development.yaml" | jq -e '
     (.spec.destinations | length) == 1 and
@@ -157,8 +162,35 @@ yq -o=json '.' \
     .spec.destinations[0].server == "https://kubernetes.default.svc" and
     (.spec.clusterResourceBlacklist | any(.group == "*" and .kind == "*")) and
     (.spec.namespaceResourceWhitelist |
-      all(.group != "rbac.authorization.k8s.io" and .kind != "Secret"))
+      all(.group != "rbac.authorization.k8s.io" and
+          .kind != "Secret" and .kind != "ResourceQuota" and
+          .kind != "LimitRange" and .kind != "NetworkPolicy"))
   ' >/dev/null
+if rg -n 'clusterResourceWhitelist|kind:[[:space:]]*Namespace' \
+  "$gitops_repo/projects/forgepath-payments-api-development.yaml" >/dev/null; then
+  fail 'generated application AppProject can create cluster-scoped resources'
+fi
+
+platform_namespace="$gitops_repo/platform/namespaces/payments-api-development.yaml"
+yq -o=json -I=0 'select(. != null)' "$platform_namespace" | jq -se '
+  length == 6 and
+  any(.[]; .kind == "Namespace" and
+    .metadata.name == "payments-api-development" and
+    .metadata.labels["forgepath.dev/managed-by"] == "platform" and
+    .metadata.labels["pod-security.kubernetes.io/enforce"] == "restricted") and
+  all(.[] | select(.kind != "Namespace");
+    .metadata.namespace == "payments-api-development" and
+    .metadata.labels["forgepath.dev/managed-by"] == "platform")
+' >/dev/null
+
+rendered_chart="$work_directory/generated-application-manifests.yaml"
+helm template payments-api "$service_repo/chart" --namespace payments-api-development \
+  >"$rendered_chart"
+if yq -e 'select(.kind == "Namespace" or .kind == "ResourceQuota" or
+    .kind == "LimitRange" or .kind == "NetworkPolicy")' "$rendered_chart" \
+  >/dev/null 2>&1; then
+  fail 'application chart rendered a platform-owned namespace boundary resource'
+fi
 
 if find "$service_repo/chart" -type f \( -name '*role*.yaml' -o -name '*binding*.yaml' \) | grep -q .; then
   fail 'generated application chart contains Kubernetes RBAC grants'

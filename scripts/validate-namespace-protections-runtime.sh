@@ -156,11 +156,14 @@ prometheus_resources="$runtime_directory/prometheus-resources.yaml"
 helm template "$release_name" services/secure-fastapi-service/chart \
   --namespace "$workload_namespace" \
   --set image.repository="$trusted_repository" \
-  --set image.digest="$trusted_digest" \
-  --set networkPolicy.applicationIngress.enabled=true >"$rendered"
+  --set image.digest="$trusted_digest" >"$rendered"
 
-yq 'select(.kind == "ResourceQuota" or .kind == "LimitRange" or .kind == "NetworkPolicy")' \
-  "$rendered" >"$boundary_resources"
+cp gitops/platform/namespaces/secure-fastapi-service-local.yaml "$boundary_resources"
+yq -i 'select(.kind == "NetworkPolicy" and .metadata.name == "forgepath-platform-allow-prometheus") |
+  .spec.ingress += [{"from": [{"namespaceSelector": {"matchLabels":
+    {"forgepath.dev/access": "application"}}, "podSelector": {"matchLabels":
+    {"forgepath.dev/client": "application"}}}], "ports": [{"protocol": "TCP", "port": 8080}]}]' \
+  "$boundary_resources"
 yq 'select(.kind == "ServiceAccount" or .kind == "Service")' \
   "$rendered" >"$application_resources"
 yq 'select(.kind == "Rollout") |
@@ -236,14 +239,14 @@ EOF
 
 require_target_context
 kube apply -f "$runtime_directory/namespaces.yaml" >/dev/null
-kube -n "$workload_namespace" apply -f "$boundary_resources" >/dev/null
+kube apply -f "$boundary_resources" >/dev/null
 
 [[ "$(kube get namespace "$workload_namespace" -o jsonpath='{.metadata.labels.pod-security\.kubernetes\.io/enforce}')" == 'restricted' ]] ||
   fail 'workload namespace did not start with restricted Pod Security enforcement'
 [[ "$(kube -n "$workload_namespace" get networkpolicy -o name | wc -l | tr -d ' ')" == '3' ]] ||
   fail 'workload namespace must start with exactly three network policies'
-kube -n "$workload_namespace" get resourcequota "$service_name" >/dev/null
-kube -n "$workload_namespace" get limitrange "$service_name" >/dev/null
+kube -n "$workload_namespace" get resourcequota forgepath-namespace-boundary >/dev/null
+kube -n "$workload_namespace" get limitrange forgepath-namespace-boundary >/dev/null
 log 'PASS compliant namespace started with restricted PSA, quota, limits, and deny-all networking'
 
 kube -n "$workload_namespace" apply -f "$application_resources" >/dev/null

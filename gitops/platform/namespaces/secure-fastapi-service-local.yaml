@@ -1,0 +1,104 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: secure-fastapi-service-local
+  labels:
+    forgepath.dev/managed-by: platform
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: v1.32
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/audit-version: v1.32
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: v1.32
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: forgepath-namespace-boundary
+  namespace: secure-fastapi-service-local
+  labels:
+    forgepath.dev/managed-by: platform
+spec:
+  hard:
+    requests.cpu: "4"
+    requests.memory: 4Gi
+    limits.cpu: "12"
+    limits.memory: 6Gi
+    pods: "30"
+    services: "10"
+    configmaps: "20"
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: forgepath-namespace-boundary
+  namespace: secure-fastapi-service-local
+  labels:
+    forgepath.dev/managed-by: platform
+spec:
+  limits:
+    - type: Container
+      defaultRequest: {cpu: 100m, memory: 128Mi}
+      default: {cpu: 500m, memory: 256Mi}
+      min: {cpu: 10m, memory: 32Mi}
+      max: {cpu: "1", memory: 512Mi}
+      maxLimitRequestRatio: {cpu: "5", memory: "2"}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: forgepath-platform-default-deny
+  namespace: secure-fastapi-service-local
+  labels:
+    forgepath.dev/managed-by: platform
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+  ingress: []
+  egress: []
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: forgepath-platform-allow-prometheus
+  namespace: secure-fastapi-service-local
+  labels:
+    forgepath.dev/managed-by: platform
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: secure-fastapi-service
+      app.kubernetes.io/instance: secure-fastapi-service
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus
+      ports:
+        - {protocol: TCP, port: 8080}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: forgepath-platform-allow-dns
+  namespace: secure-fastapi-service-local
+  labels:
+    forgepath.dev/managed-by: platform
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}

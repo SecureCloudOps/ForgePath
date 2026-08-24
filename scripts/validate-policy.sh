@@ -21,6 +21,8 @@ trap cleanup EXIT
 
 rendered="$work_directory/rendered"
 helm_output="$work_directory/helm-output"
+combined="$work_directory/platform-and-application.yaml"
+platform_namespace="gitops/platform/namespaces/secure-fastapi-service-local.yaml"
 
 "$python_bin" templates/secure-fastapi-service/render.py \
   --output "$rendered" --service-name example-fastapi
@@ -32,7 +34,11 @@ if ! find "$helm_output" -type f -name '*.yaml' -print -quit | grep -q .; then
   exit 1
 fi
 
-conftest test --combine --policy policies "$helm_output"
+cp "$platform_namespace" "$combined"
+printf '\n---\n' >>"$combined"
+helm template validation "$rendered/chart" --namespace secure-fastapi-service-local \
+  >>"$combined"
+conftest test --combine --policy policies "$combined"
 
 assert_policy_rejects() {
   local fixture="$1"

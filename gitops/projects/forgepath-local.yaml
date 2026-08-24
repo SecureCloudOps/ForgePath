@@ -13,10 +13,6 @@ spec:
   namespaceResourceWhitelist:
     - group: ""
       kind: ConfigMap
-    - group: ""
-      kind: LimitRange
-    - group: ""
-      kind: ResourceQuota
     - group: argoproj.io
       kind: AnalysisTemplate
     - group: argoproj.io
@@ -25,8 +21,6 @@ spec:
       kind: Service
     - group: ""
       kind: ServiceAccount
-    - group: networking.k8s.io
-      kind: NetworkPolicy
     - group: monitoring.coreos.com
       kind: PrometheusRule
     - group: monitoring.coreos.com

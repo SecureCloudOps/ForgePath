@@ -53,10 +53,10 @@ After explicit approval for the disposable cluster mutation:
 make validate-namespace-protections-runtime
 ```
 
-The `forgepath-namespace-boundary` harness creates the workload namespace with
-version-pinned `restricted` Pod Security Admission before creating any workload,
-then installs its ResourceQuota, LimitRange, and namespace-wide default-deny
-policies. It proves authorized service traffic, Prometheus scraping, and DNS;
+The `forgepath-namespace-boundary` harness provisions the platform-owned
+namespace prerequisite—version-pinned restricted Pod Security Admission,
+ResourceQuota, LimitRange, and namespace-wide network policy—before creating
+any application workload. It proves authorized service traffic, Prometheus scraping, and DNS;
 rejects unauthorized ingress, unauthorized application egress, quota and limit
 violations, and a restricted Pod Security violation; then deletes the isolated
 cluster and restores the original context.

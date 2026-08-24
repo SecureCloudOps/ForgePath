@@ -48,6 +48,7 @@ stable_forward_pid=''
 canary_forward_pid=''
 prometheus_forward_pid=''
 traffic_pid=''
+request_started=''
 
 log() { printf '[forgepath-progressive-runtime] %s\n' "$*"; }
 fail() { printf '[forgepath-progressive-runtime] ERROR: %s\n' "$*" >&2; exit 1; }
@@ -172,7 +173,7 @@ commit_runtime_change() {
   git -C "$runtime_directory/work" rev-parse HEAD
 }
 
-for tool in curl docker git helm jq kind kubectl sed shasum yq; do
+for tool in curl docker git helm jq kind kubectl python3.12 sed shasum yq; do
   command -v "$tool" >/dev/null || fail "required tool not found: $tool"
 done
 [[ "$(kind version | awk '{print $2}')" == "$kind_version" ]] || fail "Kind $kind_version is required"
@@ -233,7 +234,7 @@ yq '(select(.kind == "Deployment" and .metadata.name == "prometheus-operator") |
   ["--namespaces=monitoring,secure-fastapi-service-local",
    "--prometheus-instance-namespaces=monitoring"]' \
   "$runtime_directory/operator-pinned-base.yaml" >"$runtime_directory/operator-pinned.yaml"
-if yq -r -N '.. | select(has("image")) | .image' "$runtime_directory/argocd-pinned.yaml" \
+if yq -r -N '.. | select(has("image")) | .image | select(tag == "!!str")' "$runtime_directory/argocd-pinned.yaml" \
   "$runtime_directory/rollouts-pinned.yaml" "$runtime_directory/operator-pinned.yaml" |
   grep -Ev '@sha256:[a-f0-9]{64}$'; then fail 'mutable controller image remains'; fi
 
@@ -257,11 +258,49 @@ docker exec "${cluster_name}-control-plane" ctr --namespace k8s.io images tag \
   "$artifact_repository:0.1.0-local" "$artifact_repository@$artifact_digest" >/dev/null
 
 kube create namespace "$argocd_namespace" >/dev/null
-kube create namespace "$workload_namespace" >/dev/null
 kube create namespace "$monitoring_namespace" >/dev/null
-kube label namespace "$workload_namespace" "$monitoring_namespace" \
+kube label namespace "$monitoring_namespace" \
   pod-security.kubernetes.io/enforce=restricted pod-security.kubernetes.io/audit=restricted \
   pod-security.kubernetes.io/warn=restricted --overwrite >/dev/null
+log 'provisioning the platform-owned governed namespace prerequisite'
+kube apply -f gitops/platform/namespaces/secure-fastapi-service-local.yaml >/dev/null
+kube get namespace "$workload_namespace" -o json | jq -e '
+  .metadata.labels["forgepath.dev/managed-by"] == "platform" and
+  .metadata.labels["pod-security.kubernetes.io/enforce"] == "restricted"
+' >/dev/null
+kube -n "$workload_namespace" get resourcequota/forgepath-namespace-boundary \
+  limitrange/forgepath-namespace-boundary \
+  networkpolicy/forgepath-platform-default-deny \
+  networkpolicy/forgepath-platform-allow-prometheus \
+  networkpolicy/forgepath-platform-allow-dns >/dev/null
+
+log 'submitting one local developer self-service request'
+request_started="$(python3.12 -c 'import time; print(time.time())')"
+generation_root="$runtime_directory/self-service/generated"
+simulation_root="$runtime_directory/self-service/published"
+generated_service="$generation_root/secure-fastapi-service"
+python3.12 templates/secure-fastapi-service/render.py \
+  --output "$generated_service" --service-name secure-fastapi-service \
+  --owner group:default/platform --system forgepath --environment local \
+  --data-classification internal \
+  --image-repository ghcr.io/securecloudops/secure-fastapi-service \
+  --kubernetes-namespace "$workload_namespace"
+python3.12 templates/secure-fastapi-service/publish.py \
+  --mode local --source "$generated_service" --generation-root "$generation_root" \
+  --simulation-root "$simulation_root" --service-name secure-fastapi-service \
+  --owner group:default/platform --system forgepath --environment local \
+  --data-classification internal --repository-owner SecureCloudOps \
+  --gitops-repository SecureCloudOps/forgepath-gitops \
+  --backstage-identity user:default/runtime-developer \
+  --allowed-owner group:default/platform --allowed-system forgepath \
+  --allowed-repository-owner SecureCloudOps >"$evidence_directory/publication.json"
+jq -e '
+  .developerExperience.manualSteps == 1 and
+  .developerExperience.securityControlsInherited == 9 and
+  .developerExperience.requestToRepositorySeconds >= 0 and
+  .developerExperience.requestToFirstPullRequestSeconds >=
+    .developerExperience.requestToRepositorySeconds
+' "$evidence_directory/publication.json" >/dev/null
 log "installing pinned Argo CD $argocd_version"
 kube -n "$argocd_namespace" apply --server-side --force-conflicts -f "$runtime_directory/argocd-pinned.yaml" >/dev/null
 wait_deployment "$argocd_namespace" argocd-server
@@ -363,6 +402,22 @@ printf '%s\n' "$initial_revision" >"$evidence_directory/initial-git-sha.txt"
 printf '%s\n' "$initial_revision" >"$evidence_directory/digest-promotion-sha.txt"
 jq . <<<"$initial_rollout" >"$evidence_directory/healthy-v1-rollout.json"
 log "PASS healthy v1: $initial_revision stable hash $initial_stable_hash"
+request_to_healthy="$(python3.12 -c \
+  'import sys,time; print(round(time.time() - float(sys.argv[1]), 3))' "$request_started")"
+jq --argjson healthy "$request_to_healthy" '
+  .developerExperience.requestToHealthySeconds = $healthy |
+  .developerExperience + {
+    developerNeedsKubectl: false,
+    developerNeedsToUnderstand: {
+      "Argo CD": false,
+      "Kyverno": false,
+      "Argo Rollouts": false,
+      "Prometheus": false,
+      "NetworkPolicy": false
+    }
+  }
+' "$evidence_directory/publication.json" >"$evidence_directory/developer-experience.json"
+log "PASS developer request to Healthy: ${request_to_healthy}s"
 
 yq -i '.failureFixture.enabled = true |
   .monitoring.slo.windowProfile = "demo" |
