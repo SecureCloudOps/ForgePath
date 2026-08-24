@@ -57,7 +57,10 @@ ForgePath will be built in small, demonstrable increments:
 19. Redesign namespace ownership after the first approved runtime proof exposed
     an Application/AppProject conflict: platform owns namespace lifecycle, PSA,
     quota, limits, and network policy; applications own only namespaced workload
-    and SLO resources. Static remediation complete; runtime rerun pending.
+    and SLO resources. Complete, runtime-proven, and fail-closed regression
+    tested. Ownership checkpoint: `3715ab573bcc2dade6ddc6fe629f3862b98ce38e`.
+    Scoped analysis-network checkpoint:
+    `211bd353248f0481c9e7d7b11d8a3596480f4ea6`.
     Preserve the failed proof and remediation evidence in
     [developer self-service runtime evidence](evidence/DEVELOPER_SELF_SERVICE_RUNTIME.md).
 
