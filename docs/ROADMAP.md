@@ -44,6 +44,16 @@ ForgePath will be built in small, demonstrable increments:
     [workload-exception validation evidence](evidence/WORKLOAD_EXCEPTIONS.md).
     Source checkpoint: `e0e97bb7b625bb8dda49e227dd20abeefbbdc153`.
     Evidence checkpoint: `b1192319d4fe3746f1d411f0d047b188597c3140`.
+18. Make Backstage the developer entry point, add fail-closed repository and
+    GitOps publishing with an offline Git simulation, prove common mistakes are
+    rejected before generation, and capture developer-experience metrics.
+    Complete statically and frozen. See
+    [developer self-service evidence](evidence/DEVELOPER_SELF_SERVICE.md).
+    Source checkpoint: `8505cf081c444b5fc97623c19e6c4c13315065a1`.
+    Evidence checkpoint: `9049c21fd7ddd1bcaae1bc68cc05a29d45f810c3`.
+    The Phase 4 static implementation was frozen on 2026-08-24. Runtime proof
+    may add evidence only; source changes require a new roadmap increment and
+    checkpoint.
 
 Details will be designed only when each increment begins. The project will favor
 one complete, secure path over broad platform scope.
