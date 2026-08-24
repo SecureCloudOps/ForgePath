@@ -13,5 +13,7 @@ canary Service contract.
 ## Ownership
 
 - Owner: `__FORGEPATH_OWNER__`
-- System: `forgepath`
+- System: `__FORGEPATH_SYSTEM__`
+- Environment: `__FORGEPATH_ENVIRONMENT__`
+- Data classification: `__FORGEPATH_DATA_CLASSIFICATION__`
 - Kubernetes namespace: `__FORGEPATH_KUBERNETES_NAMESPACE__`

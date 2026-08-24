@@ -4,3 +4,5 @@
 !.env.example
 .mise.local.toml
 /.forgepath/
+__pycache__/
+*.py[cod]

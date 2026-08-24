@@ -25,7 +25,11 @@ validate_chart_identity() {
 
   helm template identity "$chart" \
     --namespace forgepath-identity-test \
-    --set workloadMetadata.owner=platform >"$rendered"
+    --set workloadMetadata.owner=platform \
+    --set workloadMetadata.system=forgepath \
+    --set workloadMetadata.environment=local \
+    --set workloadMetadata.dataClassification=internal \
+    --set image.repository=ghcr.io/securecloudops/identity-test >"$rendered"
   yq -o=json -I=0 'select(. != null)' "$rendered" | jq -s '.' >"$documents"
 
   jq -e '

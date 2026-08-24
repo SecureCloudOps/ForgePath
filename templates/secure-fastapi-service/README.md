@@ -11,16 +11,20 @@ python3 templates/secure-fastapi-service/render.py \
   --output /tmp/my-service \
   --service-name my-service \
   --owner group:default/platform \
-  --kubernetes-namespace my-service-local
+  --system forgepath \
+  --environment development \
+  --data-classification internal \
+  --kubernetes-namespace my-service-development
 ```
 
 The output directory must be empty. Rendering is deterministic for the same
 arguments and does not require network access or a template engine.
 
-The same renderer is the only generation implementation used by the local
-Backstage template. Backstage confines its no-publish output to
-`.forgepath/generated/<service-name>` and adds no alternate skeleton or delivery
-path.
+The same renderer is the only generation implementation used by Backstage.
+The Backstage action validates identity, ownership, metadata, image constraints,
+privilege requests, and repository targets before invoking it. The paired
+`publish.py` command creates either offline Git/PR evidence or tightly scoped
+GitHub and GitOps onboarding changes.
 
 ## Validate
 

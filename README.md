@@ -80,8 +80,12 @@ corepack yarn install --immutable
 corepack yarn start
 ```
 
-Choose **Create → Secure FastAPI service**. Output is confined to
-`.forgepath/generated/`; Backstage cannot publish it or register it remotely.
+Choose **Create → Create Secure FastAPI Service**. Local mode validates the
+request, renders beneath `.forgepath/generated/`, and creates real local Git
+repositories, onboarding branches, and PR descriptors beneath
+`.forgepath/published/` without network access. GitHub mode additionally requires
+a non-guest Backstage identity, allowlisted targets, and runtime-injected narrow
+GitHub App and catalog tokens; see the [Backstage boundary](platform/backstage/README.md).
 
 ## What the gates prove
 
@@ -102,6 +106,7 @@ Choose **Create → Secure FastAPI service**. Output is confined to
 | Progressive delivery static | `make validate-progressive-delivery-static` | Rollout stages, stable/canary Services, fail-closed Prometheus analysis, GitOps allowlist, render, and policy checks |
 | Trusted artifact | `make validate-trusted-artifact` | OCI archive, Trivy report and DB fingerprint, SPDX SBOM, digest, and locally verified ephemeral signature |
 | Backstage | `make validate-backstage-static` | Pinned app and MkDocs toolchain, rendered TechDocs, catalog, renderer confinement, and permissions |
+| Developer self-service | `make validate-developer-self-service` | Golden-path repository/PR simulation, inherited controls, DX metrics, and six pre-generation rejection cases |
 | GitOps | `make validate-gitops-static` | Restricted AppProject/Application, trusted digest handoff, render, schema, and policy checks |
 | Backstage + Argo runtime | `make validate-backstage-runtime` | Disposable Kind deployment, reconciliation, read-only Backstage workload and Application status, and RBAC denials |
 | Kyverno runtime | `make validate-kyverno-runtime` | Metadata enforcement; unsigned and unattested image denial; signed, attested digest admission; and unsafe Pod rejection through the Kubernetes API |
@@ -163,6 +168,7 @@ completion criterion.
 - [Namespace-isolation validation evidence](docs/evidence/NAMESPACE_ISOLATION.md)
 - [Workload-identity validation evidence](docs/evidence/WORKLOAD_IDENTITY.md)
 - [Workload-exception validation evidence](docs/evidence/WORKLOAD_EXCEPTIONS.md)
+- [Developer self-service and DX evidence](docs/evidence/DEVELOPER_SELF_SERVICE.md)
 - [Threat model](docs/THREAT_MODEL.md)
 - [GitOps design and rollback](gitops/README.md)
 - [Backstage boundary](platform/backstage/README.md)

@@ -7,8 +7,10 @@ required for the demo.
 ```mermaid
 flowchart LR
   developer["Developer"] --> backstage["Backstage"]
-  backstage --> catalog["secure-fastapi-service<br/>Catalog + TechDocs"]
-  backstage --> renderer["Repository-owned renderer"]
+  backstage --> preflight["Authenticated request<br/>allowlisted preflight"]
+  preflight --> renderer["Repository-owned renderer"]
+  renderer --> repository["Private service repository<br/>protected onboarding PR"]
+  repository --> catalog["secure-fastapi-service<br/>Catalog + TechDocs"]
   renderer --> validation["Tests + SAST + secret, dependency,<br/>container and manifest scans"]
   validation --> policy["OPA / Conftest policy gate"]
   policy --> artifact["OCI image + SBOM + scan report<br/>+ digest + local signature"]
@@ -31,7 +33,8 @@ flowchart LR
 
 | Boundary | Responsibility |
 | --- | --- |
-| Backstage | Local catalog, TechDocs, one renderer action, and read-only status |
+| Backstage | Identity-aware validation, one constrained create action, Catalog/TechDocs registration, and read-only status |
+| GitHub App publisher | Create only allowlisted private repositories, protections, service PRs, and GitOps onboarding PRs |
 | CI validation | Reject unsafe source, dependencies, images, and manifests |
 | Trusted-artifact pipeline | Build and bind scan, SBOM, signature, and digest evidence |
 | Git | Hold reviewed desired state and the approved immutable digest |
@@ -41,10 +44,12 @@ flowchart LR
 | Exception administrator | Manage time-bounded, one-Pod/one-rule PolicyExceptions in a dedicated namespace only |
 | Kubernetes | Run the workload and enforce RBAC/admission decisions |
 
-Backstage does not publish repositories, register remote entities, build or
-promote images, apply Kubernetes resources, hold an Argo CD token, or expose a
-sync button. The only scaffolder action delegates to the same repository-owned
-Python renderer used by the CLI and writes beneath `.forgepath/generated/`.
+Backstage does not build or promote images, apply Kubernetes resources, hold an
+Argo CD token, or expose a sync button. Its single custom action validates every
+field and target before generation, delegates to the repository-owned renderer,
+and calls a publisher constrained by organization and GitOps-repository
+allowlists. Local mode is network-free. GitHub mode rejects guest identities and
+requires short-lived GitHub App and catalog tokens injected at runtime.
 
 ## Runtime visibility boundary
 

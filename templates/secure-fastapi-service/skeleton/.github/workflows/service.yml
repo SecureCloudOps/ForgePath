@@ -1,0 +1,145 @@
+name: Service pipeline
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: service-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out without persisted credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.12.13'
+          cache: pip
+      - name: Install pinned test dependencies
+        run: python -m pip install -r requirements.txt -r requirements-dev.txt
+      - name: Test and lint
+        run: |
+          ruff format --check .
+          ruff check .
+          mypy
+          python -m pytest
+      - name: Validate chart
+        uses: azure/setup-helm@5119fcb9089d432beecbf79bb2c7915207344b78 # v4.3.0
+        with:
+          version: v4.0.4
+      - name: Render immutable workload
+        run: |
+          helm lint chart
+          helm template __FORGEPATH_SERVICE_NAME__ chart \
+            --set image.digest=sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef \
+            >/tmp/rendered.yaml
+          if grep -Eq 'privileged: true|image: .*:latest' /tmp/rendered.yaml; then
+            echo 'unsafe workload configuration rendered' >&2
+            exit 1
+          fi
+      - name: Build secure container
+        run: docker build --tag __FORGEPATH_SERVICE_NAME__:validation .
+
+  trusted-artifact:
+    name: trusted-artifact
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - name: Check out without persisted credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+      - name: Authenticate to GHCR on the protected branch
+        if: github.event_name == 'push'
+        uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567 # v3.3.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build immutable image
+        id: build
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        with:
+          context: .
+          push: ${{ github.event_name == 'push' }}
+          tags: __FORGEPATH_IMAGE_REPOSITORY__:${{ github.sha }}
+          outputs: ${{ github.event_name == 'pull_request' && 'type=oci,dest=/tmp/image.tar' || 'type=registry' }}
+      - name: Install pinned artifact tools
+        uses: jdx/mise-action@be3be2260bc02bc3fbf94c5e2fed8b7964baf074 # v3.4.0
+      - name: Produce SPDX SBOM for pull-request evidence
+        if: github.event_name == 'pull_request'
+        run: syft oci-archive:/tmp/image.tar --output spdx-json=sbom.spdx.json
+      - name: Sign the protected-branch image keylessly
+        if: github.event_name == 'push'
+        run: cosign sign --yes __FORGEPATH_IMAGE_REPOSITORY__@${{ steps.build.outputs.digest }}
+      - name: Attest protected-branch build provenance
+        if: github.event_name == 'push'
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
+        with:
+          subject-name: __FORGEPATH_IMAGE_REPOSITORY__
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+  promote-digest:
+    name: propose GitOps digest
+    if: github.event_name == 'push'
+    needs: trusted-artifact
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the allowlisted GitOps repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: __FORGEPATH_GITOPS_REPOSITORY__
+          token: ${{ secrets.FORGEPATH_GITOPS_APP_TOKEN }}
+          persist-credentials: true
+      - name: Update only this service's desired-state digest
+        env:
+          DIGEST: ${{ needs.trusted-artifact.outputs.digest }}
+          GH_TOKEN: ${{ secrets.FORGEPATH_GITOPS_APP_TOKEN }}
+        run: |
+          values_path='environments/__FORGEPATH_ENVIRONMENT__/__FORGEPATH_SERVICE_NAME__/values.yaml'
+          python - "$values_path" "$DIGEST" <<'PY'
+          import pathlib, re, sys
+          path = pathlib.Path(sys.argv[1])
+          digest = sys.argv[2]
+          text = path.read_text()
+          updated, count = re.subn(r'(?m)^(  digest: )["\x27]?sha256:[a-f0-9]{64}["\x27]?$', rf'\1"{digest}"', text)
+          if count != 1:
+              raise SystemExit('expected exactly one immutable digest field')
+          path.write_text(updated)
+          PY
+          branch="forgepath/promote-__FORGEPATH_SERVICE_NAME__-${GITHUB_SHA::12}"
+          git config user.name 'ForgePath GitHub App'
+          git config user.email 'forgepath-github-app@users.noreply.github.com'
+          git switch -c "$branch"
+          git add -- "$values_path"
+          git commit -m "Promote __FORGEPATH_SERVICE_NAME__ digest"
+          git push origin "$branch"
+          gh pr create --base main --head "$branch" \
+            --title 'Promote __FORGEPATH_SERVICE_NAME__ trusted digest' \
+            --body 'Automated immutable digest promotion. Merge remains subject to GitOps repository review and required checks.'

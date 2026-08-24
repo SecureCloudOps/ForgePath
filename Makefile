@@ -1,5 +1,6 @@
 .PHONY: build-trusted-artifact test-trusted-artifact validate-backstage-runtime \
 	validate-backstage-static validate-foundation \
+	validate-developer-self-service \
 	validate-gitops-runtime validate-gitops-static validate-policy validate-secure-fastapi \
 	validate-kyverno-runtime validate-kyverno-static validate-observability-online \
 	validate-observability-runtime validate-observability-static \
@@ -16,6 +17,7 @@ validate-v1: validate-foundation validate-trusted-artifact validate-backstage-ru
 	@printf 'ForgePath v1 end-to-end validation passed.\n'
 
 validate-v1-static: validate-foundation validate-security-static validate-backstage-static \
+	validate-developer-self-service \
 	validate-gitops-static
 	@printf 'ForgePath v1 static validation passed.\n'
 
@@ -29,6 +31,15 @@ validate-backstage-static:
 	else \
 		shellcheck scripts/validate-backstage-static.sh; \
 		./scripts/validate-backstage-static.sh; \
+	fi
+
+validate-developer-self-service:
+	@if command -v mise >/dev/null; then \
+		mise exec -- shellcheck tests/self-service/test-validation.sh; \
+		mise exec -- ./tests/self-service/test-validation.sh; \
+	else \
+		shellcheck tests/self-service/test-validation.sh; \
+		./tests/self-service/test-validation.sh; \
 	fi
 
 validate-kyverno-runtime: validate-kyverno-static
@@ -136,14 +147,15 @@ validate-foundation:
 	@./scripts/validate-foundation.sh
 
 validate-secure-fastapi:
-	@if command -v shellcheck >/dev/null; then \
-		shellcheck scripts/validate-secure-fastapi.sh; \
-	elif command -v mise >/dev/null; then \
+	@if command -v mise >/dev/null; then \
 		mise exec -- shellcheck scripts/validate-secure-fastapi.sh; \
+		mise exec -- ./scripts/validate-secure-fastapi.sh; \
+	elif command -v shellcheck >/dev/null; then \
+		shellcheck scripts/validate-secure-fastapi.sh; \
+		./scripts/validate-secure-fastapi.sh; \
 	else \
-		echo 'shellcheck is required (install it directly or with mise)' >&2; exit 1; \
+		echo 'mise or shellcheck plus all pinned validation tools are required' >&2; exit 1; \
 	fi
-	@./scripts/validate-secure-fastapi.sh
 
 validate-observability-static: validate-secure-fastapi
 	@printf 'ForgePath observability static validation passed.\n'

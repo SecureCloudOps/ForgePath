@@ -44,6 +44,9 @@ jq -e '
   .dependencies."@backstage/plugin-search" == "1.7.6" and
   .dependencies."@backstage/plugin-search-react" == "1.11.6"
 ' "$backstage_root/packages/app/package.json" >/dev/null
+jq -e '
+  .dependencies."@backstage/plugin-auth-backend-module-github-provider" == "0.5.5"
+' "$backstage_root/packages/backend/package.json" >/dev/null
 if [[ "$(node --version)" != "v22.22.2" ]]; then
   printf 'Node.js v22.22.2 is required, got: %s\n' "$(node --version)" >&2
   exit 1
@@ -77,12 +80,16 @@ yq -e '
   .apiVersion == "scaffolder.backstage.io/v1beta3" and
   .kind == "Template" and
   (.spec.steps | length) == 1 and
-  .spec.steps[0].action == "forgepath:renderSecureFastapi"
+  .metadata.title == "Create Secure FastAPI Service" and
+  .spec.steps[0].action == "forgepath:createSecureFastapi" and
+  (.spec.parameters[0].required | contains([
+    "name", "owner", "system", "environment", "dataClassification"
+  ]))
 ' "$repository_root/templates/secure-fastapi-service/template.yaml" >/dev/null
 if yq -e '.spec.steps[].action | test("^(publish:|catalog:register)")' \
   "$repository_root/templates/secure-fastapi-service/template.yaml" \
   >/dev/null 2>&1; then
-  printf 'Backstage template must not publish or register output\n' >&2
+  printf 'Backstage template must use only the constrained ForgePath action\n' >&2
   exit 1
 fi
 
@@ -95,6 +102,14 @@ yq -e '
   .catalog.locations[2].target ==
     "../../../../templates/secure-fastapi-service/template.yaml" and
   .app.routes.bindings."scaffolder.registerComponent" == false and
+  (.forgepath.allowedOwners | length) == 1 and
+  (.forgepath.allowedOwners | contains(["group:default/platform"])) and
+  (.forgepath.allowedSystems | length) == 1 and
+  (.forgepath.allowedSystems | contains(["forgepath"])) and
+  (.forgepath.allowedRepositoryOwners | length) == 1 and
+  (.forgepath.allowedRepositoryOwners | contains(["SecureCloudOps"])) and
+  .forgepath.gitopsRepository == "SecureCloudOps/forgepath-gitops" and
+  .forgepath.githubCodeowner == "SecureCloudOps/platform" and
   .kubernetes.frontend.podDelete.enabled == false and
   .kubernetes.clusterLocatorMethods[0].type == "localKubectlProxy" and
   .kubernetes.customResources[0].group == "argoproj.io" and
@@ -136,17 +151,28 @@ rg -F "request.permission.name === 'kubernetes.proxy'" \
   "$backstage_root/packages/backend/src/modules/forgePathPermissions.ts" >/dev/null
 rg -F "AuthorizeResult.DENY" \
   "$backstage_root/packages/backend/src/modules/forgePathPermissions.ts" >/dev/null
-rg -F "actionId: 'forgepath:renderSecureFastapi'" \
+rg -F "actionId: 'forgepath:createSecureFastapi'" \
   "$backstage_root/packages/backend/src/modules/forgePathPermissions.ts" >/dev/null
 rg -F "templates/secure-fastapi-service/render.py" \
   "$backstage_root/packages/backend/src/actions/renderSecureFastapi.ts" >/dev/null
 rg -F 'execFileAsync(' \
+  "$backstage_root/packages/backend/src/actions/renderSecureFastapi.ts" >/dev/null
+rg -F 'FORGEPATH_GITHUB_APP_TOKEN' \
+  "$backstage_root/packages/backend/src/actions/renderSecureFastapi.ts" >/dev/null
+rg -F "plugin-auth-backend-module-github-provider" \
+  "$backstage_root/packages/backend/src/index.ts" >/dev/null
+test -s "$backstage_root/app-config.github.yaml"
+rg -F 'repository target is not allowlisted' \
   "$backstage_root/packages/backend/src/actions/renderSecureFastapi.ts" >/dev/null
 
 (
   cd "$backstage_root"
   corepack yarn install --immutable
   corepack yarn backstage-cli config:check --config app-config.yaml
+  AUTH_GITHUB_CLIENT_ID=synthetic-client-id \
+    AUTH_GITHUB_CLIENT_SECRET=synthetic-client-secret \
+    corepack yarn backstage-cli config:check \
+      --config app-config.yaml --config app-config.github.yaml
   corepack yarn tsc
   corepack yarn lint
   corepack yarn workspace backend test --runInBand --watchAll=false
@@ -161,6 +187,9 @@ rendered="$work_directory/secure-fastapi-service"
   --service-name secure-fastapi-service \
   --description "Backstage contract validation service." \
   --owner group:default/platform \
+  --system forgepath \
+  --environment local \
+  --data-classification internal \
   --kubernetes-namespace secure-fastapi-service-local
 
 diff -ru \
@@ -199,5 +228,16 @@ for document in \
   docs/SECURITY.md; do
   test -s "$rendered/$document"
 done
+for contract in \
+  .forgepath/onboarding.yaml \
+  .github/workflows/service.yml \
+  .github/CODEOWNERS; do
+  test -s "$rendered/$contract"
+done
+yq -e '
+  .spec.privileged == false and
+  (.spec.kubernetesApiPermissions | length) == 0 and
+  (.spec.controls | length) == 9
+' "$rendered/.forgepath/onboarding.yaml" >/dev/null
 
 printf 'ForgePath Backstage static validation passed.\n'
