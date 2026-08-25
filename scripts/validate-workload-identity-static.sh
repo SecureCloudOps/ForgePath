@@ -14,7 +14,8 @@ for tool in helm jq yq; do
   command -v "$tool" >/dev/null || fail "required tool not found: $tool"
 done
 
-work_directory="$(mktemp -d /private/tmp/forgepath-workload-identity-static.XXXXXX)"
+temporary_root="${TMPDIR:-/tmp}"
+work_directory="$(mktemp -d "${temporary_root%/}/forgepath-workload-identity-static.XXXXXX")"
 trap 'rm -rf "$work_directory"' EXIT
 
 validate_chart_identity() {

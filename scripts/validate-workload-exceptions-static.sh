@@ -19,7 +19,8 @@ for tool in jq kyverno yq; do
   command -v "$tool" >/dev/null || fail "required static validation tool not found: $tool"
 done
 
-work_directory="$(mktemp -d /private/tmp/forgepath-workload-exceptions-static.XXXXXX)"
+temporary_root="${TMPDIR:-/tmp}"
+work_directory="$(mktemp -d "${temporary_root%/}/forgepath-workload-exceptions-static.XXXXXX")"
 trap 'rm -rf "$work_directory"' EXIT
 
 yq -e '
