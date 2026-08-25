@@ -14,7 +14,7 @@ elif [[ -n "${1:-}" ]]; then
 fi
 
 python_bin="${PYTHON_BIN:-python3.12}"
-for tool in "$python_bin" conftest helm jq kubeconform rg yq; do
+for tool in "$python_bin" conftest git helm jq kubeconform rg yq; do
   if ! command -v "$tool" >/dev/null; then
     printf 'required GitOps validation tool not found: %s\n' "$tool" >&2
     exit 1
@@ -29,13 +29,111 @@ values="$repository_root/gitops/environments/local/secure-fastapi-service/values
 project="$repository_root/gitops/projects/forgepath-local.yaml"
 application="$repository_root/gitops/applications/secure-fastapi-service-local.yaml"
 platform_namespace="$repository_root/gitops/platform/namespaces/secure-fastapi-service-local.yaml"
-metadata="${TRUSTED_ARTIFACT_METADATA:-$repository_root/.forgepath/trusted-artifact/metadata.json}"
+metadata_explicit=false
+if [[ -n "${TRUSTED_ARTIFACT_METADATA:-}" ]]; then
+  metadata="$TRUSTED_ARTIFACT_METADATA"
+  metadata_explicit=true
+else
+  metadata="$repository_root/.forgepath/trusted-artifact/metadata.json"
+fi
+tracked_artifact_manifest="${TRUSTED_ARTIFACT_MANIFEST:-$repository_root/docs/evidence/manifests/ca4-trusted-artifact.json}"
 schema_directory="$repository_root/gitops/schemas/kubernetes/v1.32.0-standalone-strict"
 work_directory="$(mktemp -d)"
 cleanup() {
   rm -rf "$work_directory"
 }
 trap cleanup EXIT
+
+sha256_file() {
+  if command -v sha256sum >/dev/null; then
+    sha256sum "$1" | awk '{print $1}'
+  elif command -v shasum >/dev/null; then
+    shasum -a 256 "$1" | awk '{print $1}'
+  else
+    printf 'sha256sum or shasum is required for tracked artifact validation\n' >&2
+    return 1
+  fi
+}
+
+materialize_tracked_artifact_projection() {
+  local approved_repository='ghcr.io/securecloudops/secure-fastapi-service'
+  local current_template_revision digest expected_values_sha projection_directory
+  local repository source_revision values_sha
+
+  if [[ -s "$metadata" ]]; then
+    return
+  fi
+  if [[ "$metadata_explicit" == "true" ]]; then
+    printf 'trusted artifact metadata is missing: %s\n' "$metadata" >&2
+    return 1
+  fi
+  if [[ ! -s "$tracked_artifact_manifest" ]]; then
+    printf 'tracked trusted-artifact manifest is missing: %s\n' \
+      "$tracked_artifact_manifest" >&2
+    return 1
+  fi
+
+  jq -e --arg repository "$approved_repository" --arg values_path \
+    "gitops/environments/local/secure-fastapi-service/values.yaml" '
+      . as $manifest |
+      .schemaVersion == 1 and
+      .correctiveAction == "CA-4" and
+      .status == "closed" and
+      (.source.revision | test("^[a-f0-9]{40}$")) and
+      .source.dirty == false and
+      .source.reproducibleTimestamp == true and
+      .image.repository == $repository and
+      (.image.digest | test("^sha256:[a-f0-9]{64}$")) and
+      (["metadata.json", "sbom.spdx.json", "trivy-report.json",
+        "trivy-db-metadata.json", "image-digest.sig", "cosign.pub",
+        "image-digest.txt", "TRUSTED"] |
+        all(.[]; ($manifest.evidence[.] | type == "string" and
+          test("^[a-f0-9]{64}$")))) and
+      .gitops.path == $values_path and
+      (.gitops.sha256 | test("^[a-f0-9]{64}$")) and
+      .gitops.digestMatchesArtifact == true
+    ' "$tracked_artifact_manifest" >/dev/null || {
+      printf 'tracked trusted-artifact manifest is invalid: %s\n' \
+        "$tracked_artifact_manifest" >&2
+      return 1
+    }
+
+  source_revision="$(jq -er '.source.revision' "$tracked_artifact_manifest")"
+  current_template_revision="$(git log -1 --format=%H -- templates/secure-fastapi-service)"
+  if ! git cat-file -e "$source_revision^{commit}" 2>/dev/null ||
+     [[ "$source_revision" != "$current_template_revision" ]]; then
+    printf 'tracked artifact source does not match the current template revision\n' >&2
+    return 1
+  fi
+
+  expected_values_sha="$(jq -er '.gitops.sha256' "$tracked_artifact_manifest")"
+  values_sha="$(sha256_file "$values")"
+  if [[ "$values_sha" != "$expected_values_sha" ]]; then
+    printf 'tracked artifact manifest does not match GitOps desired state\n' >&2
+    return 1
+  fi
+
+  repository="$(jq -er '.image.repository' "$tracked_artifact_manifest")"
+  digest="$(jq -er '.image.digest' "$tracked_artifact_manifest")"
+  projection_directory="$work_directory/trusted-artifact-projection"
+  mkdir -p "$projection_directory"
+  jq -n --arg repository "$repository" --arg digest "$digest" '
+    {
+      schema_version: 1,
+      image: {
+        repository: $repository,
+        digest: $digest,
+        trusted_reference: ($repository + "@" + $digest)
+      },
+      vulnerability_scan: {result: "passed"},
+      signature: {verification_result: "passed"}
+    }
+  ' >"$projection_directory/metadata.json"
+  printf '%s\n' "$digest" >"$projection_directory/TRUSTED"
+  metadata="$projection_directory/metadata.json"
+  printf 'Using tracked trusted-artifact manifest for static validation: %s\n' \
+    "$tracked_artifact_manifest"
+}
 
 validate_argocd() {
   local candidate_project="$1"
@@ -334,6 +432,7 @@ run_negative_suite() {
   expect_rejection 'policy-violating rendered Helm output' run_policy "$policy_violation"
 }
 
+materialize_tracked_artifact_projection
 validate_argocd "$project" "$application"
 validate_platform_namespace "$platform_namespace"
 trusted_reference="$(read_trusted_reference)"
