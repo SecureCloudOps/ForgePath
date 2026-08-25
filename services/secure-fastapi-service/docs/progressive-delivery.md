@@ -22,8 +22,11 @@ succeeds only when exactly one result exists and its value is no greater than
 the configured maximum burn rate. An empty result, an over-threshold result, or
 a Prometheus query error fails the AnalysisRun. Argo Rollouts then aborts the
 update and keeps the stable Service on the previous ReplicaSet.
-The aborted canary is retained for ten minutes so operators can capture metrics,
-alerts, logs, and ReplicaSet evidence before it is scaled down automatically.
+Because this is a basic replica-weighted canary without a traffic router, the
+controller scales the candidate down promptly after abort. The incident harness
+therefore captures candidate configuration and logs after alert acknowledgment
+while analysis is still running, then captures the failed AnalysisRun and
+containment state.
 
 ## Defective-v2 abort demonstration
 

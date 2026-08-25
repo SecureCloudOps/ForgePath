@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "correctiveAction": "CA-4",
+  "incidentId": "INC-20260824T152814Z",
+  "status": "closed",
+  "closedAt": "2026-08-24T11:48:00-04:00",
+  "source": {
+    "revision": "211bd353248f0481c9e7d7b11d8a3596480f4ea6",
+    "dirty": false,
+    "reproducibleTimestamp": true
+  },
+  "image": {
+    "repository": "ghcr.io/securecloudops/secure-fastapi-service",
+    "digest": "sha256:26a1ce3bbe7bae23a594ec2292d666e1173aadb4c20ce310639e0048df3efa40"
+  },
+  "evidence": {
+    "metadata.json": "350fa8cb0447ed4c1aeb1c36a44fe2d4dbd84495948714c30229a2b7fafb478f",
+    "sbom.spdx.json": "6ce3bc181a96a8ff79db071a0f7a869c67bb41565fadbe02ba2846b642214bc1",
+    "trivy-report.json": "ea47d1b0a3f6d273876183e5415610015cdea05adee3fc3351496a96f3cc58dc",
+    "trivy-db-metadata.json": "5ff07fbd26547b2eab52881ba9de217c65f9fcefdbada7b786e5cae1b765025a",
+    "image-digest.sig": "8d477496268d6d6e6b45435584ecd16f804e48541aea796890dffb0642a2e516",
+    "cosign.pub": "786981d806e42124999c6a877f5fd707a57fd52973531648e020a98e7e12ea7f",
+    "image-digest.txt": "39940c1800f12b2a730c31a2a3ccca06fc75466aba3991548b802e7f9953a6f5",
+    "TRUSTED": "39940c1800f12b2a730c31a2a3ccca06fc75466aba3991548b802e7f9953a6f5"
+  },
+  "gitops": {
+    "path": "gitops/environments/local/secure-fastapi-service/values.yaml",
+    "sha256": "5d146a58129df32aa0e0c8ed685a8251fbc4d1b5897308a664aa030a4194e713",
+    "digestMatchesArtifact": true
+  }
+}

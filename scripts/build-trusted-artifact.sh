@@ -49,6 +49,11 @@ source_dirty=false
 if [[ -n "$(git status --porcelain --untracked-files=all -- "$build_input")" ]]; then
   source_dirty=true
 fi
+if [[ "$source_dirty" == true ]]; then
+  printf 'refusing trusted-artifact build from dirty source: %s\n' "$build_input" >&2
+  printf 'commit or remove the template changes, then rebuild from a clean source state\n' >&2
+  exit 1
+fi
 build_timestamp=""
 source_date_epoch=""
 if [[ -n "$source_revision" ]]; then

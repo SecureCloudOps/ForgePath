@@ -2,6 +2,16 @@
 
 set -euo pipefail
 
+incident_mode='automated'
+if [[ "${1:-}" == '--incident-exercise' ]]; then
+  incident_mode='interactive'
+  shift
+fi
+[[ $# -eq 0 ]] || {
+  printf 'usage: %s [--incident-exercise]\n' "$0" >&2
+  exit 2
+}
+
 repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repository_root"
 
@@ -49,6 +59,16 @@ canary_forward_pid=''
 prometheus_forward_pid=''
 traffic_pid=''
 request_started=''
+defective_release_started=''
+detected_at=''
+acknowledged_at=''
+recovery_started_at=''
+restored_at=''
+incident_responder='automated-runtime-validator'
+rollback_actor='automated-runtime-validator'
+rollback_control='automatic'
+traffic_log=''
+rollout_samples=''
 
 log() { printf '[forgepath-progressive-runtime] %s\n' "$*"; }
 fail() { printf '[forgepath-progressive-runtime] ERROR: %s\n' "$*" >&2; exit 1; }
@@ -56,6 +76,54 @@ fail() { printf '[forgepath-progressive-runtime] ERROR: %s\n' "$*" >&2; exit 1; 
 sha256_file() {
   if command -v sha256sum >/dev/null; then sha256sum "$1" | awk '{print $1}'
   else shasum -a 256 "$1" | awk '{print $1}'; fi
+}
+
+now_epoch() {
+  python3.12 -c 'import time; print(f"{time.time():.6f}")'
+}
+
+acknowledge_incident() {
+  local response=''
+  if [[ "$incident_mode" == interactive ]]; then
+    [[ -r /dev/tty ]] || fail 'interactive incident exercise requires a terminal'
+    printf '\nALERT: ForgePathSLOFastBurn is firing. Type "ACK <responder>" to acknowledge: ' >/dev/tty
+    IFS= read -r response </dev/tty
+    [[ "$response" == 'ACK '* && -n "${response#ACK }" ]] || fail 'alert was not acknowledged'
+    incident_responder="${response#ACK }"
+  fi
+  acknowledged_at="$(now_epoch)"
+  log "ACK alert acknowledged by $incident_responder"
+}
+
+approve_git_recovery() {
+  local response=''
+  if [[ "$incident_mode" == interactive ]]; then
+    printf '\nDIAGNOSIS: the Git change enabled the 503 fixture; the SLO gate protected stable v1.\n' >/dev/tty
+    printf 'Type "APPROVE GIT REVERT <approver>" to authorize recovery: ' >/dev/tty
+    IFS= read -r response </dev/tty
+    [[ "$response" == 'APPROVE GIT REVERT '* && -n "${response#APPROVE GIT REVERT }" ]] ||
+      fail 'Git recovery was not approved'
+    rollback_actor="${response#APPROVE GIT REVERT }"
+    rollback_control='human-approved'
+  fi
+  recovery_started_at="$(now_epoch)"
+  log "RECOVERY $rollback_control Git revert authorized by $rollback_actor"
+}
+
+sample_rollout() {
+  local state sample_time
+  [[ -n "$rollout_samples" ]] || return 0
+  state="$(kube -n "$workload_namespace" get rollout "$rollout_name" -o json 2>/dev/null || true)"
+  [[ -n "$state" ]] || return 0
+  sample_time="$(now_epoch)"
+  jq -c --argjson observed "$sample_time" '{
+    epochSeconds: $observed,
+    updatedReplicas: (.status.updatedReplicas // 0),
+    desiredReplicas: .spec.replicas,
+    stepIndex: (.status.currentStepIndex // 0),
+    stableReplicaSet: (.status.stableRS // null),
+    candidateReplicaSet: (.status.currentPodHash // null)
+  }' <<<"$state" >>"$rollout_samples"
 }
 
 kube() { kubectl --context "$kind_context" "$@"; }
@@ -193,11 +261,20 @@ done
 kind get clusters | grep -Fxq "$cluster_name" && fail "refusing pre-existing cluster $cluster_name"
 original_context="$(kubectl config current-context 2>/dev/null || true)"
 [[ -n "$original_context" ]] || fail 'an original Kubernetes context is required'
-[[ -z "$(git status --porcelain --untracked-files=all -- templates/secure-fastapi-service gitops/environments/local/secure-fastapi-service/values.yaml)" ]] ||
-  fail 'trusted source and promoted values must be clean'
+trusted_image_inputs=(
+  templates/secure-fastapi-service/render.py
+  templates/secure-fastapi-service/skeleton/.dockerignore
+  templates/secure-fastapi-service/skeleton/Dockerfile
+  templates/secure-fastapi-service/skeleton/app
+  templates/secure-fastapi-service/skeleton/requirements.txt
+)
+[[ -z "$(git status --porcelain --untracked-files=all -- \
+  "${trusted_image_inputs[@]}" gitops/environments/local/secure-fastapi-service/values.yaml)" ]] ||
+  fail 'trusted image inputs and promoted values must be clean'
 "$repository_root/scripts/validate-trusted-artifact.sh" "$artifact_directory" >/dev/null
 "$repository_root/scripts/validate-gitops-static.sh" >/dev/null
 source_revision="$(jq -er '.build.source_revision' "$metadata")"
+artifact_source_dirty="$(jq -er '.build.source_dirty' "$metadata")"
 artifact_digest="$(jq -er '.image.digest' "$metadata")"
 artifact_repository="$(jq -er '.image.repository' "$metadata")"
 [[ "$(git rev-parse "$source_revision")" == "$source_revision" ]] || fail 'artifact source revision is unavailable'
@@ -209,6 +286,10 @@ evidence_parent="$repository_root/.forgepath/progressive-delivery-evidence"
 evidence_directory="$evidence_parent/$(date -u +%Y%m%dT%H%M%SZ)"
 mkdir -p "$evidence_parent" "$runtime_directory/git"
 mkdir "$evidence_directory"
+traffic_log="$evidence_directory/request-events.csv"
+rollout_samples="$evidence_directory/rollout-samples.jsonl"
+printf 'epoch_seconds,delivery_role,path,status_code\n' >"$traffic_log"
+: >"$rollout_samples"
 jq '{image,build,vulnerability_scan:{result:.vulnerability_scan.result,database:.vulnerability_scan.database},signature:{verification_result:.signature.verification_result}}' \
   "$metadata" >"$evidence_directory/trusted-artifact.json"
 printf '%s\n' "$source_revision" >"$evidence_directory/source-sha.txt"
@@ -439,6 +520,7 @@ yq -i '.failureFixture.enabled = true |
   .progressiveDelivery.analysis.burnRateWindow = "1m" |
   .progressiveDelivery.analysis.initialDelay = "360s"' \
   "$runtime_directory/work/gitops/environments/local/secure-fastapi-service/values.yaml"
+defective_release_started="$(now_epoch)"
 promotion_revision="$(commit_runtime_change 'demo: promote trusted defective v2 fixture')"
 printf '%s\n' "$promotion_revision" >"$evidence_directory/promotion-sha.txt"
 printf '%s\n' "$promotion_revision" >"$evidence_directory/defective-promotion-sha.txt"
@@ -466,6 +548,8 @@ if [[ -z "${rollout_progress:-}" ]] || ! jq -e '
 ' <<<"$rollout_progress" >/dev/null; then
   fail '5% replica weighting did not settle at one canary pod'
 fi
+sample_rollout
+candidate_hash="$(jq -er '.status.currentPodHash' <<<"$rollout_progress")"
 supervise_port_forward "$workload_namespace" "$stable_service" 18080:80 "$runtime_directory/stable-forward.log" &
 stable_forward_pid=$!
 supervise_port_forward "$workload_namespace" "$canary_service" 18081:80 "$runtime_directory/canary-forward.log" &
@@ -479,12 +563,15 @@ prometheus_forward_pid=$!
 wait_http "$prometheus_forward_pid" 'http://127.0.0.1:19090/-/ready' "$runtime_directory/prometheus-forward.log"
 (
   while true; do
-    request_failed=false
+    cycle_epoch="$(now_epoch)"
     for _ in {1..19}; do
-      curl -fsS -o /dev/null 'http://127.0.0.1:18080/docs' 2>/dev/null || request_failed=true
+      status="$(curl -sS -o /dev/null -w '%{http_code}' 'http://127.0.0.1:18080/docs' 2>/dev/null || true)"
+      printf '%s,stable,/docs,%s\n' "$cycle_epoch" "$status" >>"$traffic_log"
     done
-    [[ "$(curl -sS -o /dev/null -w '%{http_code}' 'http://127.0.0.1:18081/_test/failure' 2>/dev/null || true)" == 503 ]] || request_failed=true
-    [[ "$request_failed" == false ]] || sleep 1
+    failure_epoch="$(now_epoch)"
+    status="$(curl -sS -o /dev/null -w '%{http_code}' 'http://127.0.0.1:18081/_test/failure' 2>/dev/null || true)"
+    printf '%s,canary,/_test/failure,%s\n' "$failure_epoch" "$status" >>"$traffic_log"
+    [[ "$status" == 503 ]] || sleep 1
   done
 ) &
 traffic_pid=$!
@@ -492,6 +579,7 @@ traffic_pid=$!
 burn_query="forgepath:slo_availability_burn_rate{forgepath_service=\"$rollout_name\",window=\"1m\"}"
 canary_error_query="sum(increase(http_requests_total{forgepath_service=\"$rollout_name\",path=\"/_test/failure\",status_code=\"503\"}[1m]))"
 alert_query='ALERTS{alertname="ForgePathSLOFastBurn",alertstate="firing"}'
+budget_query="forgepath:slo_error_budget_remaining:ratio{forgepath_service=\"$rollout_name\",window=\"1h\"}"
 deadline=$((SECONDS + 300))
 while ((SECONDS < deadline)); do
   curl -fsS --get --data-urlencode "query=$canary_error_query" 'http://127.0.0.1:19090/api/v1/query' \
@@ -503,6 +591,7 @@ while ((SECONDS < deadline)); do
   canary_errors="$(jq -r '.data.result[0].value[1] // "0"' "$evidence_directory/prometheus-canary-errors.json")"
   burn="$(jq -r '.data.result[0].value[1] // "0"' "$evidence_directory/prometheus-burn-rate.json")"
   alerts="$(jq '.data.result | length' "$evidence_directory/prometheus-alert.json")"
+  sample_rollout
   if jq -ne --argjson errors "$canary_errors" --argjson burn "$burn" \
     '$errors > 0 and $burn > 14.4 and $burn < 100' >/dev/null && [[ "$alerts" -gt 0 ]]; then break; fi
   sleep 5
@@ -512,7 +601,30 @@ jq -ne --argjson errors "${canary_errors:-0}" '$errors > 0' >/dev/null ||
 jq -ne --argjson burn "${burn:-0}" '$burn > 14.4 and $burn < 100' >/dev/null ||
   fail 'Prometheus burn rate did not establish the expected replica-weighted breach before analysis'
 [[ "${alerts:-0}" -gt 0 ]] || fail 'fast-burn alert did not fire before analysis'
+detected_at="$(now_epoch)"
 log "PASS Prometheus precondition: canary errors $canary_errors; burn rate $burn; fast-burn alert firing"
+acknowledge_incident
+
+kube -n "$workload_namespace" get pod -l "rollouts-pod-template-hash=$candidate_hash" -o json \
+  >"$evidence_directory/canary-pods.json"
+kube -n "$workload_namespace" logs -l "rollouts-pod-template-hash=$candidate_hash" \
+  -c application --prefix=true >"$evidence_directory/canary-logs.txt"
+kube -n "$workload_namespace" get rollout "$rollout_name" -o json \
+  >"$evidence_directory/diagnostic-rollout.json"
+kube -n "$argocd_namespace" get application "$application_name" -o json \
+  >"$evidence_directory/diagnostic-application.json"
+git -C "$runtime_directory/work" diff "$initial_revision" "$promotion_revision" -- \
+  gitops/environments/local/secure-fastapi-service/values.yaml \
+  >"$evidence_directory/defective-release.patch"
+jq -e 'any(.items[].spec.containers[];
+  any(.env[]?; .name == "FORGEPATH_FAILURE_FIXTURE_ENABLED" and .value == "true"))' \
+  "$evidence_directory/canary-pods.json" >/dev/null || fail 'candidate pod did not contain the controlled fixture setting'
+grep -Fq '"path":"/_test/failure","status_code":503' "$evidence_directory/canary-logs.txt" ||
+  fail 'canary logs did not correlate the controlled route with HTTP 503'
+grep -Fq '+failureFixture:' "$evidence_directory/defective-release.patch" ||
+  grep -Fq '+  enabled: true' "$evidence_directory/defective-release.patch" ||
+  fail 'Git evidence did not identify the enabled failure fixture'
+log 'DIAGNOSIS Git diff, candidate configuration, logs, metrics, and alert confirm the controlled 503 fixture'
 
 analysis_name=''
 analysis_phase=''
@@ -534,6 +646,7 @@ while ((SECONDS < deadline)); do
       fail "AnalysisRun entered unexpected terminal phase: $analysis_phase"
     fi
   fi
+  sample_rollout
   kill -0 "$traffic_pid" 2>/dev/null || fail 'traffic generator exited'
   kill -0 "$stable_forward_pid" 2>/dev/null || fail 'stable Service port-forward exited'
   kill -0 "$canary_forward_pid" 2>/dev/null || fail 'canary Service port-forward exited'
@@ -552,15 +665,36 @@ stable_selector="$(kube -n "$workload_namespace" get service "$stable_service" -
 [[ "$stable_selector" == "$initial_stable_hash" ]] || fail 'stable Service moved away from v1'
 jq . <<<"$aborted_rollout" >"$evidence_directory/aborted-rollout.json"
 kube -n "$workload_namespace" get service,endpoints,pod -o json >"$evidence_directory/stable-workload.json"
+sample_rollout
+
+kube -n "$workload_namespace" get events --sort-by=.metadata.creationTimestamp -o json \
+  >"$evidence_directory/workload-events.json"
+jq -e '.status.phase == "Failed" and
+  any(.status.metricResults[]?; .name == "availability-burn-rate" and .phase == "Failed")' \
+  "$evidence_directory/failed-analysisrun.json" >/dev/null || fail 'AnalysisRun evidence did not confirm the failed SLO gate'
 
 curl -fsS --get --data-urlencode "query=$burn_query" 'http://127.0.0.1:19090/api/v1/query' \
   >"$evidence_directory/prometheus-post-abort-burn-rate.json" || true
+curl -fsS --get --data-urlencode "query=$budget_query" 'http://127.0.0.1:19090/api/v1/query' \
+  >"$evidence_directory/prometheus-error-budget.json"
 kube -n "$argocd_namespace" get application "$application_name" -o json >"$evidence_directory/aborted-application.json"
 log "PASS defective v2 aborted at 5%; burn rate $burn; stable hash $stable_selector"
 
 kill "$traffic_pid" 2>/dev/null || true
 wait "$traffic_pid" 2>/dev/null || true
 traffic_pid=''
+if awk -F, 'NR > 1 && $4 != 200 && $4 != 503 {exit 1}' "$traffic_log"; then :; else
+  fail 'traffic evidence contains a status other than the expected 200 and 503'
+fi
+failed_requests="$(awk -F, 'NR > 1 && $4 >= 500 {count++} END {print count + 0}' "$traffic_log")"
+total_requests="$(awk 'END {print NR - 1}' "$traffic_log")"
+[[ "$failed_requests" -gt 0 && "$total_requests" -gt "$failed_requests" ]] ||
+  fail 'traffic evidence did not capture both healthy and failed requests'
+error_budget_remaining="$(jq -er '.data.result[0].value[1]' "$evidence_directory/prometheus-error-budget.json")"
+jq -ne --argjson remaining "$error_budget_remaining" '$remaining >= 0 and $remaining <= 1' >/dev/null ||
+  fail 'Prometheus error-budget result was invalid'
+
+approve_git_recovery
 git -C "$runtime_directory/work" revert --no-edit "$promotion_revision" >/dev/null
 git -C "$runtime_directory/work" push origin main >/dev/null
 revert_revision="$(git -C "$runtime_directory/work" rev-parse HEAD)"
@@ -571,10 +705,115 @@ final_rollout="$(kube -n "$workload_namespace" get rollout "$rollout_name" -o js
 jq -e --arg stable "$initial_stable_hash" '
   .status.stableRS == $stable and any(.status.conditions[]; .type == "Healthy" and .status == "True")
 ' <<<"$final_rollout" >/dev/null || fail 'healthy desired state was not restored'
+curl -fsS -o /dev/null 'http://127.0.0.1:18080/docs' || fail 'restoration verification request failed'
+restored_at="$(now_epoch)"
 jq . <<<"$final_rollout" >"$evidence_directory/final-rollout.json"
 kube -n "$argocd_namespace" get application "$application_name" -o json >"$evidence_directory/final-application.json"
-printf 'PASS source=%s artifact=%s digest_promotion=%s defective_promotion=%s analysis=%s revert=%s\n' \
-  "$source_revision" "$artifact_digest" "$initial_revision" "$promotion_revision" "$analysis_name" "$revert_revision" \
+
+incident_id="INC-$(basename "$evidence_directory")"
+jq -n \
+  --arg incident_id "$incident_id" \
+  --arg responder "$incident_responder" \
+  --arg rollback_control "$rollback_control" \
+  --arg rollback_actor "$rollback_actor" \
+  --arg healthy_revision "$initial_revision" \
+  --arg defective_revision "$promotion_revision" \
+  --arg recovery_revision "$revert_revision" \
+  --arg analysis_name "$analysis_name" \
+  --arg stable_hash "$initial_stable_hash" \
+  --arg candidate_hash "$candidate_hash" \
+  --argjson release_started "$defective_release_started" \
+  --argjson detected "$detected_at" \
+  --argjson acknowledged "$acknowledged_at" \
+  --argjson recovery_started "$recovery_started_at" \
+  --argjson restored "$restored_at" \
+  --argjson remaining "$error_budget_remaining" \
+  --argjson burn "$burn" \
+  --argjson failed "$failed_requests" \
+  --argjson total "$total_requests" \
+  --argjson artifact_source_dirty "$artifact_source_dirty" \
+  '{
+    schemaVersion: 1,
+    incidentId: $incident_id,
+    service: "secure-fastapi-service",
+    status: "resolved",
+    severity: "SEV-2 exercise",
+    responder: $responder,
+    objective: {availabilityTarget: 0.999, budgetWindow: "1h"},
+    timestamps: {
+      defectiveReleaseStartedAtEpochSeconds: $release_started,
+      detectedAtEpochSeconds: $detected,
+      acknowledgedAtEpochSeconds: $acknowledged,
+      recoveryStartedAtEpochSeconds: $recovery_started,
+      restoredAtEpochSeconds: $restored
+    },
+    errorBudgetRemainingRatio: $remaining,
+    rollback: {control: $rollback_control, actor: $rollback_actor},
+    revisions: {healthy: $healthy_revision, defective: $defective_revision, recovery: $recovery_revision},
+    impact: ("A controlled defective canary returned " + ($failed | tostring) +
+      " HTTP 503 responses among " + ($total | tostring) +
+      " synthetic requests. The stable Service remained on the healthy ReplicaSet."),
+    detection: ("Prometheus observed the ForgePathSLOFastBurn alert firing at " +
+      ($burn | tostring) + "x burn before AnalysisRun " + $analysis_name + " completed."),
+    rootCause: ("The defective Git revision enabled failureFixture.enabled and routed the canary " +
+      "test endpoint to an intentional HTTP 503 response. Canary logs, the Git diff, Prometheus " +
+      "metrics, and the failed AnalysisRun independently confirm the causal chain."),
+    contributingFactors: [
+      "The demo profile intentionally compresses alert and error-budget windows for an operational exercise.",
+      "Replica weighting requires the synthetic generator to preserve the explicit 95/5 stable/canary request mix.",
+      "The canary stays probe-healthy, so SLO telemetry—not readiness—must identify the defect."
+    ],
+    recovery: ("After evidence collection and authorization, a Git revert restored the healthy desired state. " +
+      "Argo CD reconciled the recovery revision; no imperative Rollout promotion or workload patch was used."),
+    correctiveActions: [
+      {id: "CA-1", action: "Run this evidence-producing incident exercise after changes to rollout or SLO policy.", owner: "platform", status: "open"},
+      {id: "CA-2", action: "Integrate the production alert route with an external paging and acknowledgment system.", owner: "observability", status: "open"},
+      {id: "CA-3", action: "Set and review target thresholds for MTTD, MTTA, MTTR, exposure, and budget consumption.", owner: "service-owner", status: "open"},
+      {id: "CA-4", action: "Rebuild the trusted artifact from a clean source state so provenance records source_dirty=false.", owner: "supply-chain", status: (if $artifact_source_dirty then "open" else "closed" end)}
+    ],
+    detectionGaps: ([
+      "The disposable exercise polls Prometheus directly and does not prove Alertmanager notification delivery.",
+      "Traffic is synthetic and does not validate client-side retry or regional impact behavior."
+    ] + (if $artifact_source_dirty then
+      [("Trusted-artifact integrity is verified, but its retained provenance records source_dirty=" + ($artifact_source_dirty | tostring) + ".")]
+    else [] end)),
+    unverifiedHypotheses: [],
+    evidence: [
+      {id: "synthetic-requests", path: "request-events.csv", observation: "Authoritative per-request status evidence used for impact start and the exact failed-request count."},
+      {id: "trusted-artifact", path: "trusted-artifact.json", observation: ("Signature, digest, vulnerability, and source metadata were retained; source_dirty=" + ($artifact_source_dirty | tostring) + ".")},
+      {id: "rollout-samples", path: "rollout-samples.jsonl", observation: "Time-series Rollout samples used to calculate maximum canary exposure."},
+      {id: "canary-logs", path: "canary-logs.txt", observation: "Structured application logs show request_complete for /_test/failure with status_code 503."},
+      {id: "canary-pods", path: "canary-pods.json", observation: ("Candidate ReplicaSet " + $candidate_hash + " had the controlled failure environment enabled.")},
+      {id: "git-change", path: "defective-release.patch", observation: "The only incident-triggering desired-state change enabled the fixture and accelerated demo telemetry windows."},
+      {id: "prometheus-errors", path: "prometheus-canary-errors.json", observation: "Prometheus counted eligible canary HTTP 503 responses."},
+      {id: "prometheus-burn", path: "prometheus-burn-rate.json", observation: ("The recorded availability burn rate was " + ($burn | tostring) + "x, above the 14.4x gate.")},
+      {id: "prometheus-alert", path: "prometheus-alert.json", observation: "ForgePathSLOFastBurn was firing before rollout analysis completed."},
+      {id: "prometheus-budget", path: "prometheus-error-budget.json", observation: "The 1-hour demo availability error-budget remaining ratio was captured at peak impact."},
+      {id: "analysisrun", path: "failed-analysisrun.json", observation: ("AnalysisRun " + $analysis_name + " failed its availability burn-rate measurement.")},
+      {id: "diagnostic-rollout", path: "diagnostic-rollout.json", observation: "The live Rollout was at the first analysis gate when the diagnosis was recorded."},
+      {id: "argocd-at-diagnosis", path: "diagnostic-application.json", observation: "Argo CD tied the live candidate to the defective Git revision during triage."},
+      {id: "aborted-rollout", path: "aborted-rollout.json", observation: ("The Rollout aborted at the first gate and retained stable ReplicaSet " + $stable_hash + ".")},
+      {id: "argocd-before-recovery", path: "aborted-application.json", observation: "Argo CD runtime state tied the defective workload to the defective Git revision."},
+      {id: "workload-events", path: "workload-events.json", observation: "Kubernetes events preserve the controller-side rollout sequence."},
+      {id: "restored-rollout", path: "final-rollout.json", observation: "The Rollout returned Healthy on the stable ReplicaSet after Git recovery."},
+      {id: "argocd-after-recovery", path: "final-application.json", observation: "Argo CD reconciled the Git recovery revision to Synced/Healthy."}
+    ]
+  }' >"$evidence_directory/incident-context.json"
+
+python3.12 "$repository_root/scripts/render-incident-postmortem.py" \
+  --context "$evidence_directory/incident-context.json" \
+  --output-dir "$evidence_directory"
+expected_rollback_control='automatic'
+[[ "$incident_mode" == interactive ]] && expected_rollback_control='human-approved'
+jq -e --arg control "$expected_rollback_control" '
+  .mttdSeconds >= 0 and .mttaSeconds >= 0 and .mttrSeconds >= .mttdSeconds and
+  .maximumCanaryExposurePercent == 5 and .failedSyntheticRequests > 0 and
+  .errorBudgetConsumedRatio >= 0 and .errorBudgetConsumedRatio <= 1 and
+  .rollbackControl == $control
+' "$evidence_directory/incident-metrics.json" >/dev/null
+printf 'PASS source=%s artifact=%s digest_promotion=%s defective_promotion=%s analysis=%s revert=%s incident=%s\n' \
+  "$source_revision" "$artifact_digest" "$initial_revision" "$promotion_revision" "$analysis_name" "$revert_revision" "$incident_id" \
   >"$evidence_directory/summary.txt"
 log "PASS Git revert reconciled Healthy at $revert_revision"
+log "PASS incident metrics and postmortem rendered for $incident_id"
 log "EVIDENCE $evidence_directory"

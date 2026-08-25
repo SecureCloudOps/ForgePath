@@ -63,6 +63,17 @@ ForgePath will be built in small, demonstrable increments:
     `211bd353248f0481c9e7d7b11d8a3596480f4ea6`.
     Preserve the failed proof and remediation evidence in
     [developer self-service runtime evidence](evidence/DEVELOPER_SELF_SERVICE_RUNTIME.md).
+20. Extend the defective-release proof into an operational incident exercise:
+    alert acknowledgment, logs/metrics/Rollout/Git evidence, measured MTTD,
+    MTTA, MTTR, canary exposure, failed requests and error-budget consumption,
+    human-approved Git recovery, and a generated postmortem. Complete and
+    runtime-proven. The first fail-closed harness discovery and the corrected
+    proof are preserved in the
+    [incident-exercise evidence](evidence/INCIDENT_EXERCISE.md).
+21. Close the incident provenance corrective action by rebuilding the trusted
+    artifact from clean committed source, verifying `source_dirty=false`, and
+    binding the resulting digest into GitOps. Complete. See the
+    [trusted-artifact provenance closure](evidence/TRUSTED_ARTIFACT_PROVENANCE.md).
 
 Details will be designed only when each increment begins. The project will favor
 one complete, secure path over broad platform scope.

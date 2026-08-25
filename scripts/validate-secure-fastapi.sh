@@ -214,7 +214,7 @@ jq -e '
   .spec.replicas == 20 and
   .spec.strategy.canary.stableService == "validation-example-fastapi" and
   .spec.strategy.canary.canaryService == "validation-example-fastapi-canary" and
-  .spec.strategy.canary.abortScaleDownDelaySeconds == 600 and
+  (.spec.strategy.canary | has("abortScaleDownDelaySeconds") | not) and
   [.spec.strategy.canary.steps[] |
     if has("setWeight") then ["weight", .setWeight]
     else ["analysis", .analysis.templates[0].templateName] end] ==

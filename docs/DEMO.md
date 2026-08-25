@@ -82,6 +82,25 @@ observations, and Git rollback are in the reference service's
 Installing the Argo Rollouts prerequisites and running the cluster mutation are
 a separate approval boundary.
 
+## Operational incident exercise
+
+The incident exercise extends the defective-v2 proof through alert
+acknowledgment, evidence-led diagnosis, human-approved Git recovery, measured
+restoration, and a generated postmortem:
+
+```sh
+make validate-incident-exercise-static
+# after explicit approval for the disposable cluster mutation
+make validate-incident-exercise-runtime
+```
+
+The runtime pauses for `ACK <responder>` after the alert fires and for
+`APPROVE GIT REVERT <approver>` after diagnostic evidence has been gathered.
+Its evidence bundle reports MTTD, MTTA, MTTR, maximum canary exposure, exact
+failed requests, error-budget consumption, and rollback control. See the
+[incident exercise runbook](../services/secure-fastapi-service/docs/incident-exercise.md)
+for definitions and the evidence contract.
+
 ## Workload-identity demonstration
 
 The application has no Kubernetes API requirement, so its explicit permission

@@ -15,7 +15,6 @@ spec:
     canary:
       stableService: {{ include "service.fullname" . }}
       canaryService: {{ include "service.fullname" . }}-canary
-      abortScaleDownDelaySeconds: 600
       maxSurge: 1
       maxUnavailable: 0
       steps:

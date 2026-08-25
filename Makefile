@@ -7,6 +7,7 @@
 	validate-namespace-protections-runtime validate-namespace-protections-static \
 	validate-platform-guardrails-runtime validate-platform-guardrails-static \
 	validate-progressive-delivery-runtime validate-progressive-delivery-static validate-security \
+	validate-incident-exercise-runtime validate-incident-exercise-static \
 	validate-security-online validate-security-static validate-trivy-online \
 	validate-trusted-artifact validate-v1 validate-v1-static \
 	validate-workload-exceptions-runtime validate-workload-exceptions-static \
@@ -170,6 +171,23 @@ validate-progressive-delivery-runtime: validate-progressive-delivery-static
 	else \
 		shellcheck scripts/validate-progressive-delivery-runtime.sh; \
 		./scripts/validate-progressive-delivery-runtime.sh; \
+	fi
+
+validate-incident-exercise-static: validate-progressive-delivery-static
+	@if command -v mise >/dev/null; then \
+		mise exec -- env PYTHONDONTWRITEBYTECODE=1 python3.12 -m unittest tests/incident/test-postmortem.py; \
+		mise exec -- shellcheck scripts/validate-progressive-delivery-runtime.sh; \
+	else \
+		env PYTHONDONTWRITEBYTECODE=1 python3.12 -m unittest tests/incident/test-postmortem.py; \
+		shellcheck scripts/validate-progressive-delivery-runtime.sh; \
+	fi
+	@printf 'ForgePath incident-exercise static validation passed.\n'
+
+validate-incident-exercise-runtime: validate-incident-exercise-static
+	@if command -v mise >/dev/null; then \
+		mise exec -- ./scripts/validate-progressive-delivery-runtime.sh --incident-exercise; \
+	else \
+		./scripts/validate-progressive-delivery-runtime.sh --incident-exercise; \
 	fi
 
 validate-trivy-online:

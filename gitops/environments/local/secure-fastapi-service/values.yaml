@@ -2,7 +2,7 @@ replicaCount: 20
 
 image:
   repository: ghcr.io/securecloudops/secure-fastapi-service
-  digest: "sha256:d971dc0d119a17e9b361906b67eb0fbada2cac6d197ec338620ecfd7e1eeba2c"
+  digest: "sha256:26a1ce3bbe7bae23a594ec2292d666e1173aadb4c20ce310639e0048df3efa40"
   pullPolicy: IfNotPresent
 
 workloadMetadata:
