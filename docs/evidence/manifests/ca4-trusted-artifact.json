@@ -4,28 +4,29 @@
   "incidentId": "INC-20260824T152814Z",
   "status": "closed",
   "closedAt": "2026-08-24T11:48:00-04:00",
+  "updatedAt": "2026-08-24T20:08:47-04:00",
   "source": {
-    "revision": "211bd353248f0481c9e7d7b11d8a3596480f4ea6",
+    "revision": "c51aaa8f7db00f316389c1078b6ce3968b794f97",
     "dirty": false,
     "reproducibleTimestamp": true
   },
   "image": {
     "repository": "ghcr.io/securecloudops/secure-fastapi-service",
-    "digest": "sha256:26a1ce3bbe7bae23a594ec2292d666e1173aadb4c20ce310639e0048df3efa40"
+    "digest": "sha256:148fa9472d55a1e093e1b31242928aa40cbe3681d025d1c8880c0d6e1bc20d4f"
   },
   "evidence": {
-    "metadata.json": "350fa8cb0447ed4c1aeb1c36a44fe2d4dbd84495948714c30229a2b7fafb478f",
-    "sbom.spdx.json": "6ce3bc181a96a8ff79db071a0f7a869c67bb41565fadbe02ba2846b642214bc1",
-    "trivy-report.json": "ea47d1b0a3f6d273876183e5415610015cdea05adee3fc3351496a96f3cc58dc",
+    "metadata.json": "b1723e7b50699e926cacafd55ff0862a25745ce9cf48acf93aa64892d901c720",
+    "sbom.spdx.json": "59d770a71f91441ff800bb6dbd175f36d1f230a277f2152d0c50444382f549e8",
+    "trivy-report.json": "15fa65b213d9655b3d178c1818c08c28457d76d8f27846be451c8bb631288e25",
     "trivy-db-metadata.json": "5ff07fbd26547b2eab52881ba9de217c65f9fcefdbada7b786e5cae1b765025a",
-    "image-digest.sig": "8d477496268d6d6e6b45435584ecd16f804e48541aea796890dffb0642a2e516",
-    "cosign.pub": "786981d806e42124999c6a877f5fd707a57fd52973531648e020a98e7e12ea7f",
-    "image-digest.txt": "39940c1800f12b2a730c31a2a3ccca06fc75466aba3991548b802e7f9953a6f5",
-    "TRUSTED": "39940c1800f12b2a730c31a2a3ccca06fc75466aba3991548b802e7f9953a6f5"
+    "image-digest.sig": "711a1cbb9bffe768507209b5807b1258c06fb8a59146bf958646295e3212f094",
+    "cosign.pub": "a162ae36e999785792ff07c7ae68c35f620429d419906426e8ef84c06e3bc211",
+    "image-digest.txt": "3e78db5823806c772705056c0857deef4f2fd960ab234795065e6cec3a5a7448",
+    "TRUSTED": "3e78db5823806c772705056c0857deef4f2fd960ab234795065e6cec3a5a7448"
   },
   "gitops": {
     "path": "gitops/environments/local/secure-fastapi-service/values.yaml",
-    "sha256": "5d146a58129df32aa0e0c8ed685a8251fbc4d1b5897308a664aa030a4194e713",
+    "sha256": "068e93ef420b34827fa031eaac676ea4660555c0db6ce2f176543db02bc0f6ca",
     "digestMatchesArtifact": true
   }
 }

@@ -102,8 +102,8 @@ separate local check found no remaining Kind cluster.
 - The exercise polls Prometheus directly and does not prove Alertmanager paging
   delivery.
 - Traffic is synthetic and does not validate client retry or regional behavior.
-- CA-4 is closed. The trusted artifact was rebuilt from clean source at revision
-  `211bd353248f0481c9e7d7b11d8a3596480f4ea6`; retained metadata now records
+- CA-4 is closed. The final v2 trusted artifact was rebuilt from clean source at
+  revision `c51aaa8f7db00f316389c1078b6ce3968b794f97`; retained metadata records
   `source_dirty=false`, and GitOps pins the rebuilt digest. See the
   [provenance closure](TRUSTED_ARTIFACT_PROVENANCE.md).
 - Establish reviewed targets for MTTD, MTTA, MTTR, maximum exposure, failed
