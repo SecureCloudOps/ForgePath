@@ -26,6 +26,7 @@ required_files=(
   image.oci.tar
   metadata.json
   sbom.spdx.json
+  trivy-db-metadata.json
   trivy-report.json
 )
 if [[ "$require_trusted_marker" == "true" ]]; then
@@ -81,6 +82,9 @@ if ! jq -e --arg digest "$recorded_digest" '
   .vulnerability_scan.scanner == "Trivy" and
   .vulnerability_scan.policy_severities == ["HIGH", "CRITICAL"] and
   .vulnerability_scan.report_path == "trivy-report.json" and
+  .vulnerability_scan.database.schema_version == 2 and
+  (.vulnerability_scan.database.updated_at | type == "string" and length > 0) and
+  .vulnerability_scan.database.metadata_path == "trivy-db-metadata.json" and
   .vulnerability_scan.image_digest == $digest and
   .signature.payload_path == "image-digest.txt" and
   .signature.signature_path == "image-digest.sig" and
@@ -108,6 +112,17 @@ fi
 if [[ "$(sha256_file "$artifact_directory/trivy-report.json")" != \
       "$(jq -er '.vulnerability_scan.report_sha256' "$metadata")" ]]; then
   printf 'vulnerability report checksum does not match metadata\n' >&2
+  exit 1
+fi
+if [[ "$(sha256_file "$artifact_directory/trivy-db-metadata.json")" != \
+      "$(jq -er '.vulnerability_scan.database.metadata_sha256' "$metadata")" ]]; then
+  printf 'Trivy DB metadata checksum does not match artifact metadata\n' >&2
+  exit 1
+fi
+if ! jq -e --arg updated_at "$(jq -er '.vulnerability_scan.database.updated_at' "$metadata")" '
+  .Version == 2 and .UpdatedAt == $updated_at and .NextUpdate and .DownloadedAt
+' "$artifact_directory/trivy-db-metadata.json" >/dev/null; then
+  printf 'Trivy DB metadata evidence is invalid\n' >&2
   exit 1
 fi
 if [[ "$(sha256_file "$artifact_directory/image-digest.sig")" != \

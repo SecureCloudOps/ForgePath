@@ -5,16 +5,24 @@
 - `/health/live` confirms the process event loop can answer HTTP.
 - `/health/ready` returns 200 only while the application lifespan is ready.
 - `/metrics` exposes request count and latency in Prometheus text format.
+- The SLO rules exclude metrics and health probes from eligible traffic.
 - JSON logs include `request_id`, route, method, status, and duration.
 
 ## Triage
 
-1. Check Deployment availability and recent pod events.
+1. Check Rollout phase, its current step, AnalysisRuns, and recent pod events.
 2. Inspect readiness failures and structured logs using the request ID.
 3. Check CPU and memory usage against the configured requests and limits.
 4. Confirm NetworkPolicies permit only the intended ingress source.
 5. Roll back to the previous immutable image version through the owning GitOps
    workflow. Do not patch a live workload or reuse an image tag.
+
+An SLO-gate failure aborts promotion. Confirm the stable Service still selects
+the previous ReplicaSet, then restore the last healthy desired state through
+Git. Do not imperatively promote a failed canary.
+
+See [SLO.md](SLO.md) for the production burn windows and the isolated failure
+fixture procedure.
 
 ## Graceful termination
 

@@ -2,9 +2,9 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "additionalProperties": false,
-  "required": ["replicaCount", "image", "service", "resources", "networkPolicy"],
+  "required": ["replicaCount", "image", "workloadMetadata", "service", "failureFixture", "progressiveDelivery", "monitoring", "resources"],
   "properties": {
-    "replicaCount": {"type": "integer", "minimum": 1},
+    "replicaCount": {"type": "integer", "minimum": 20, "multipleOf": 20},
     "image": {
       "type": "object",
       "additionalProperties": false,
@@ -18,11 +18,93 @@
         "pullPolicy": {"enum": ["IfNotPresent", "Always", "Never"]}
       }
     },
+    "workloadMetadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["owner", "system", "environment", "dataClassification"],
+      "properties": {
+        "owner": {"$ref": "#/$defs/labelValue"},
+        "system": {"$ref": "#/$defs/labelValue"},
+        "environment": {"enum": ["local", "development", "staging", "production"]},
+        "dataClassification": {"enum": ["public", "internal", "confidential", "restricted"]},
+        "supportTier": {"enum": ["1", "2", "3", "4"]}
+      }
+    },
     "service": {
       "type": "object",
       "additionalProperties": false,
       "required": ["port"],
       "properties": {"port": {"type": "integer", "minimum": 1, "maximum": 65535}}
+    },
+    "failureFixture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled"],
+      "properties": {"enabled": {"type": "boolean"}}
+    },
+    "progressiveDelivery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["analysis"],
+      "properties": {
+        "analysis": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["prometheusAddress", "burnRateWindow", "maxBurnRate", "initialDelay", "timeoutSeconds"],
+          "properties": {
+            "prometheusAddress": {"type": "string", "pattern": "^https?://\\S+$"},
+            "burnRateWindow": {"enum": ["1m", "5m"]},
+            "maxBurnRate": {"type": "number", "minimum": 0},
+            "initialDelay": {"$ref": "#/$defs/duration"},
+            "timeoutSeconds": {"type": "integer", "minimum": 1, "maximum": 60}
+          }
+        }
+      }
+    },
+    "monitoring": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "serviceMonitor", "prometheusAccess", "slo", "grafana"],
+      "properties": {
+        "enabled": {"const": true},
+        "serviceMonitor": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["interval", "scrapeTimeout"],
+          "properties": {
+            "interval": {"$ref": "#/$defs/duration"},
+            "scrapeTimeout": {"$ref": "#/$defs/duration"}
+          }
+        },
+        "prometheusAccess": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["namespaceSelector", "podSelector"],
+          "properties": {
+            "namespaceSelector": {"$ref": "#/$defs/selector"},
+            "podSelector": {"$ref": "#/$defs/selector"}
+          }
+        },
+        "slo": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["availabilityTarget", "latencyThresholdSeconds", "windowProfile"],
+          "properties": {
+            "availabilityTarget": {"type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 1},
+            "latencyThresholdSeconds": {"const": 0.3},
+            "windowProfile": {"enum": ["production", "demo"]}
+          }
+        },
+        "grafana": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["dashboardLabel", "dashboardLabelValue"],
+          "properties": {
+            "dashboardLabel": {"type": "string", "minLength": 1},
+            "dashboardLabelValue": {"type": "string", "minLength": 1}
+          }
+        }
+      }
     },
     "resources": {
       "type": "object",
@@ -32,18 +114,29 @@
         "requests": {"$ref": "#/$defs/resourcePair"},
         "limits": {"$ref": "#/$defs/resourcePair"}
       }
-    },
-    "networkPolicy": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["allowIngress", "ingressNamespaceSelector"],
-      "properties": {
-        "allowIngress": {"type": "boolean"},
-        "ingressNamespaceSelector": {"type": "object"}
-      }
     }
   },
   "$defs": {
+    "labelValue": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9]([A-Za-z0-9_.-]{0,61}[A-Za-z0-9])?$"
+    },
+    "duration": {
+      "type": "string",
+      "pattern": "^[1-9][0-9]*(ms|s|m|h)$"
+    },
+    "selector": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["matchLabels"],
+      "properties": {
+        "matchLabels": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {"type": "string", "minLength": 1}
+        }
+      }
+    },
     "resourcePair": {
       "type": "object",
       "additionalProperties": false,

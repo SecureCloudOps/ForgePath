@@ -1,4 +1,154 @@
-# ForgePath v1 demo
+# ForgePath demonstrations
+
+## Platform-guardrails demonstration
+
+The first guardrail increment establishes who owns a workload and which software
+may execute. Its single admission story is:
+
+```text
+developer submits workload with valid ownership metadata
+  -> trusted-registry digest is unsigned
+  -> denied
+  -> image is signed but has no SLSA provenance
+  -> denied
+  -> signed digest and signed SLSA provenance supplied
+  -> admitted
+  -> the same trusted workload requests privileged execution
+  -> denied
+  -> compliant workload admitted
+```
+
+Offline policy, chart, and negative-fixture proof:
+
+```sh
+make validate-platform-guardrails-static
+```
+
+After explicit approval for the trusted-artifact build and disposable cluster
+mutation:
+
+```sh
+make validate-platform-guardrails-runtime
+```
+
+The harness uses only `forgepath-kyverno`, verifies the exact context, installs
+the checksum-reviewed and digest-pinned Kyverno manifest, and adds a digest-pinned
+registry sidecar for this proof. The registry is reachable only through a local
+port-forward. The one-run Cosign private key remains in a temporary directory,
+is never printed, and is deleted immediately after signing and attestation.
+Cleanup removes the cluster and all temporary material and restores the caller's
+original Kubernetes context.
+
+## Namespace-isolation demonstration
+
+Offline boundary validation:
+
+```sh
+make validate-namespace-protections-static
+```
+
+After explicit approval for the disposable cluster mutation:
+
+```sh
+make validate-namespace-protections-runtime
+```
+
+The `forgepath-namespace-boundary` harness provisions the platform-owned
+namespace prerequisite—version-pinned restricted Pod Security Admission,
+ResourceQuota, LimitRange, and namespace-wide network policy—before creating
+any application workload. It proves authorized service traffic, Prometheus scraping, and DNS;
+rejects unauthorized ingress, unauthorized application egress, quota and limit
+violations, and a restricted Pod Security violation; then deletes the isolated
+cluster and restores the original context.
+
+## Progressive-delivery demonstration
+
+The next approved runtime demonstration is intentionally one failure story:
+
+```text
+healthy v1
+  -> reconcile defective v2
+  -> 5% replica-weighted canary
+  -> availability burn rate exceeds 14.4x
+  -> AnalysisRun fails
+  -> Rollout aborts before 25%
+  -> stable Service remains on v1
+```
+
+The repository now contains the static desired state and assertions for this
+path. The exact prerequisites, demo-only values, 95/5 synthetic request mix,
+observations, and Git rollback are in the reference service's
+[progressive-delivery runbook](../services/secure-fastapi-service/docs/progressive-delivery.md).
+Installing the Argo Rollouts prerequisites and running the cluster mutation are
+a separate approval boundary.
+
+## Operational incident exercise
+
+The incident exercise extends the defective-v2 proof through alert
+acknowledgment, evidence-led diagnosis, human-approved Git recovery, measured
+restoration, and a generated postmortem:
+
+```sh
+make validate-incident-exercise-static
+# after explicit approval for the disposable cluster mutation
+make validate-incident-exercise-runtime
+```
+
+The runtime pauses for `ACK <responder>` after the alert fires and for
+`APPROVE GIT REVERT <approver>` after diagnostic evidence has been gathered.
+Its evidence bundle reports MTTD, MTTA, MTTR, maximum canary exposure, exact
+failed requests, error-budget consumption, and rollback control. See the
+[incident exercise runbook](../services/secure-fastapi-service/docs/incident-exercise.md)
+for definitions and the evidence contract.
+
+## Workload-identity demonstration
+
+The application has no Kubernetes API requirement, so its explicit permission
+set is empty and both its ServiceAccount and Pod disable token automount. The
+AppProject also refuses application-owned RBAC resources.
+
+```sh
+make validate-workload-identity-static
+```
+
+After explicit approval for the disposable cluster mutation:
+
+```sh
+make validate-workload-identity-runtime
+```
+
+The runtime story is `healthy application -> short-lived application identity
+calls the Secrets API -> HTTP 403 -> isolated platform reconciler patches only
+its named Deployment -> application identity cannot perform the same patch`.
+The harness also runs negative `kubectl auth can-i` checks for Secrets,
+Deployments, Rollouts, AnalysisRuns, Kyverno policies, NetworkPolicies,
+privileged-workload creation, token requests, and identity impersonation.
+
+## Controlled workload-exception demonstration
+
+The exception increment preserves the workload-identity trust model: exception
+administration belongs to a separate platform ServiceAccount in a dedicated
+namespace, while the application ServiceAccount retains zero exception rights.
+
+```sh
+make validate-workload-exceptions-static
+```
+
+After explicit approval for the disposable cluster mutation:
+
+```sh
+make validate-workload-exceptions-runtime
+```
+
+The runtime story is `denied Pod -> approved 30-second exception for one exact
+policy/rule/namespace/Pod -> exact Pod admitted -> neighboring Pod denied ->
+unrelated hostPID control denied -> application patch forbidden -> platform
+exception expires in place -> original Pod denied again -> platform administrator
+removes the expired object`. Non-sensitive
+evidence records owner, justification, approver, approval reference, approval
+time, scheduled expiry, removal time, and the exact affected control/workload.
+
+## ForgePath v1 demo
 
 This demo tells one story with one service:
 
@@ -69,10 +219,11 @@ After explicit approval:
 make validate-kyverno-runtime
 ```
 
-The disposable `forgepath-kyverno` cluster admits the compliant Helm rendering
-and rejects privileged, root, mutable-image, missing-resource, host-network,
-and host-PID Pods. It repeats a rejection after restarting the admission
-controller to prove fail-closed enforcement remains active.
+The disposable `forgepath-kyverno` cluster runs the metadata and trusted-image
+sequence above, admits the compliant Helm rendering, and rejects privileged,
+root, mutable-image, missing-resource, host-network, and host-PID Pods. It
+repeats a rejection after restarting the admission controller to prove
+fail-closed enforcement remains active.
 
 ## Screenshot set
 

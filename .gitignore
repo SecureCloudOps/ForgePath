@@ -3,4 +3,22 @@
 .env.*
 !.env.example
 .mise.local.toml
+
+# Local runtime evidence, scanner databases, and trusted-artifact output.
 /.forgepath/
+
+# Python and test caches.
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+/htmlcov/
+
+# Root-level documentation, package, and coverage build output.
+/site/
+/build/
+/dist/
+/coverage/
+*.log

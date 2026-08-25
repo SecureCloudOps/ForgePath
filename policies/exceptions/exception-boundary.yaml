@@ -1,0 +1,187 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: forgepath-policy-exception-boundary
+  annotations:
+    policies.kyverno.io/title: ForgePath Policy Exception Boundary
+    policies.kyverno.io/category: ForgePath Security
+    policies.kyverno.io/severity: critical
+    policies.kyverno.io/subject: PolicyException
+    kyverno.io/kyverno-version: 1.18.2
+    kyverno.io/kubernetes-version: "1.32"
+spec:
+  admission: true
+  background: false
+  failurePolicy: Fail
+  validationFailureAction: Enforce
+  webhookTimeoutSeconds: 10
+  rules:
+    - name: require-governance-metadata
+      match:
+        any:
+          - resources:
+              kinds:
+                - PolicyException
+              operations:
+                - CREATE
+                - UPDATE
+      validate:
+        allowExistingViolations: false
+        message: >-
+          PolicyExceptions require owner, justification, expiry, and complete
+          approval metadata.
+        deny:
+          conditions:
+            any:
+              - key: "{{ request.object.metadata.annotations.\"forgepath.dev/exception-owner\" || '' }}"
+                operator: Equals
+                value: ""
+              - key: "{{ request.object.metadata.annotations.\"forgepath.dev/exception-justification\" || '' }}"
+                operator: Equals
+                value: ""
+              - key: "{{ request.object.metadata.annotations.\"forgepath.dev/exception-expires-at\" || '' }}"
+                operator: Equals
+                value: ""
+              - key: "{{ request.object.metadata.annotations.\"forgepath.dev/exception-approved-by\" || '' }}"
+                operator: Equals
+                value: ""
+              - key: "{{ request.object.metadata.annotations.\"forgepath.dev/exception-approved-at\" || '' }}"
+                operator: Equals
+                value: ""
+              - key: "{{ request.object.metadata.annotations.\"forgepath.dev/exception-approval-reference\" || '' }}"
+                operator: Equals
+                value: ""
+
+    - name: require-unexpired-exception
+      match:
+        any:
+          - resources:
+              kinds:
+                - PolicyException
+              operations:
+                - CREATE
+                - UPDATE
+      validate:
+        allowExistingViolations: false
+        message: PolicyExceptions must carry a valid future RFC3339 expiry timestamp.
+        deny:
+          conditions:
+            any:
+              - key: "{{ regex_match('^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$', request.object.metadata.annotations.\"forgepath.dev/exception-expires-at\" || '') }}"
+                operator: Equals
+                value: false
+              - key: "{{ time_before(time_now_utc(), request.object.metadata.annotations.\"forgepath.dev/exception-expires-at\" || '1970-01-01T00:00:00Z') }}"
+                operator: Equals
+                value: false
+              - key: "{{ (request.object.spec.conditions.all || `[]`) | length(@) }}"
+                operator: NotEquals
+                value: 1
+              - key: "{{ (request.object.spec.conditions.any || `[]`) | length(@) }}"
+                operator: GreaterThan
+                value: 0
+              - key: "{{ request.object.spec.conditions.all[0].operator || '' }}"
+                operator: NotEquals
+                value: Equals
+              - key: "{{ request.object.spec.conditions.all[0].value || `false` }}"
+                operator: NotEquals
+                value: true
+              - key: "{{ regex_match('^\\{\\{ time_before\\(time_now_utc\\(\\), \\x27[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\\x27\\) \\}\\}$', request.object.spec.conditions.all[0].key || '') }}"
+                operator: Equals
+                value: false
+              - key: "{{ contains(request.object.spec.conditions.all[0].key || '', request.object.metadata.annotations.\"forgepath.dev/exception-expires-at\" || 'not-bound') }}"
+                operator: Equals
+                value: false
+
+    - name: require-single-exact-control
+      match:
+        any:
+          - resources:
+              kinds:
+                - PolicyException
+              operations:
+                - CREATE
+                - UPDATE
+      validate:
+        allowExistingViolations: false
+        message: >-
+          A PolicyException must name exactly one policy and exactly one rule;
+          wildcard policy or rule names are forbidden.
+        deny:
+          conditions:
+            any:
+              - key: "{{ request.object.spec.exceptions[] | length(@) }}"
+                operator: NotEquals
+                value: 1
+              - key: "{{ request.object.spec.exceptions[0].ruleNames[] | length(@) }}"
+                operator: NotEquals
+                value: 1
+              - key: "{{ regex_match('^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$', request.object.spec.exceptions[0].policyName || '') }}"
+                operator: Equals
+                value: false
+              - key: "{{ regex_match('^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$', request.object.spec.exceptions[0].ruleNames[0] || '') }}"
+                operator: Equals
+                value: false
+
+    - name: require-single-exact-pod-scope
+      match:
+        any:
+          - resources:
+              kinds:
+                - PolicyException
+              operations:
+                - CREATE
+                - UPDATE
+      validate:
+        allowExistingViolations: false
+        message: >-
+          A PolicyException must match one exact Pod name in one exact
+          namespace; wildcard, selector, subject, and multi-resource scopes are
+          forbidden.
+        deny:
+          conditions:
+            any:
+              - key: "{{ request.object.spec.match.any[] | length(@) }}"
+                operator: NotEquals
+                value: 1
+              - key: "{{ request.object.spec.match.all[] || `[]` | length(@) }}"
+                operator: GreaterThan
+                value: 0
+              - key: "{{ request.object.spec.match.any[0].resources.kinds[] | length(@) }}"
+                operator: NotEquals
+                value: 1
+              - key: "{{ request.object.spec.match.any[0].resources.kinds[0] || '' }}"
+                operator: NotEquals
+                value: Pod
+              - key: "{{ request.object.spec.match.any[0].resources.names[] | length(@) }}"
+                operator: NotEquals
+                value: 1
+              - key: "{{ regex_match('^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$', request.object.spec.match.any[0].resources.names[0] || '') }}"
+                operator: Equals
+                value: false
+              - key: "{{ request.object.spec.match.any[0].resources.names[0] || '' }}"
+                operator: NotEquals
+                value: "{{ request.object.metadata.annotations.\"forgepath.dev/exception-workload\" || '' }}"
+              - key: "{{ (request.object.spec.match.any[0].resources.namespaces || `[]`) | length(@) }}"
+                operator: NotEquals
+                value: 1
+              - key: "{{ regex_match('^[a-z0-9]([-a-z0-9]*[a-z0-9])?$', request.object.spec.match.any[0].resources.namespaces[0] || '') }}"
+                operator: Equals
+                value: false
+              - key: "{{ request.object.spec.match.any[0].resources.namespaces[0] || '' }}"
+                operator: NotEquals
+                value: "{{ request.object.metadata.annotations.\"forgepath.dev/exception-namespace\" || '' }}"
+              - key: "{{ request.object.spec.match.any[0].resources.selector || `{}` | length(@) }}"
+                operator: GreaterThan
+                value: 0
+              - key: "{{ request.object.spec.match.any[0].resources.namespaceSelector || `{}` | length(@) }}"
+                operator: GreaterThan
+                value: 0
+              - key: "{{ request.object.spec.match.any[0].subjects[] || `[]` | length(@) }}"
+                operator: GreaterThan
+                value: 0
+              - key: "{{ request.object.spec.match.any[0].roles[] || `[]` | length(@) }}"
+                operator: GreaterThan
+                value: 0
+              - key: "{{ request.object.spec.match.any[0].clusterRoles[] || `[]` | length(@) }}"
+                operator: GreaterThan
+                value: 0

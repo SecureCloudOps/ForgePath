@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: invalid-metadata
+  labels:
+    forgepath.dev/owner: platform
+    forgepath.dev/system: forgepath
+    forgepath.dev/environment: sandbox
+    forgepath.dev/data-classification: secret
+    forgepath.dev/support-tier: "0"
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 10001
+  containers:
+    - name: application
+      image: ghcr.io/securecloudops/application@sha256:0000000000000000000000000000000000000000000000000000000000000000
+      securityContext:
+        allowPrivilegeEscalation: false
+        privileged: false
+        capabilities:
+          drop: ["ALL"]
+      resources:
+        requests: {cpu: 100m, memory: 128Mi}
+        limits: {cpu: 500m, memory: 256Mi}

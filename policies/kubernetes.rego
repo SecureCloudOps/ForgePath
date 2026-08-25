@@ -29,10 +29,12 @@ documents contains document if {
 
 workloads contains workload if {
 	some document in documents
-	document.kind in {"Deployment", "StatefulSet", "DaemonSet", "Job"}
+	document.kind in {"Deployment", "StatefulSet", "DaemonSet", "Job", "Rollout"}
 	workload := {
 		"kind": document.kind,
 		"name": object.get(document.metadata, "name", "<unnamed>"),
+		"metadata": object.get(document, "metadata", {}),
+		"pod_metadata": object.get(document.spec.template, "metadata", {}),
 		"pod_spec": document.spec.template.spec,
 	}
 }
@@ -43,6 +45,8 @@ workloads contains workload if {
 	workload := {
 		"kind": document.kind,
 		"name": object.get(document.metadata, "name", "<unnamed>"),
+		"metadata": object.get(document, "metadata", {}),
+		"pod_metadata": object.get(document.spec.jobTemplate.spec.template, "metadata", {}),
 		"pod_spec": document.spec.jobTemplate.spec.template.spec,
 	}
 }
@@ -53,8 +57,38 @@ workloads contains workload if {
 	workload := {
 		"kind": document.kind,
 		"name": object.get(document.metadata, "name", "<unnamed>"),
+		"metadata": object.get(document, "metadata", {}),
+		"pod_metadata": object.get(document, "metadata", {}),
 		"pod_spec": document.spec,
 	}
+}
+
+required_workload_labels := {
+	"forgepath.dev/owner",
+	"forgepath.dev/system",
+	"forgepath.dev/environment",
+	"forgepath.dev/data-classification",
+}
+
+approved_environments := {"local", "development", "staging", "production"}
+approved_data_classifications := {"public", "internal", "confidential", "restricted"}
+approved_support_tiers := {"1", "2", "3", "4"}
+
+metadata_has_required_labels(metadata) if {
+	labels := object.get(metadata, "labels", {})
+	every label in required_workload_labels {
+		value := object.get(labels, label, "")
+		is_string(value)
+		value != ""
+	}
+}
+
+metadata_values_are_valid(metadata) if {
+	labels := object.get(metadata, "labels", {})
+	object.get(labels, "forgepath.dev/environment", "") in approved_environments
+	object.get(labels, "forgepath.dev/data-classification", "") in approved_data_classifications
+	support_tier := object.get(labels, "forgepath.dev/support-tier", "1")
+	support_tier in approved_support_tiers
 }
 
 workload_containers contains pair if {
@@ -110,6 +144,14 @@ image_is_mutable(image) if {
 	regex.match(`(?i)(^|:)(latest|stable|main|master)$`, image)
 }
 
+image_uses_approved_registry(image) if {
+	regex.match(`^ghcr\.io/securecloudops/[^@]+@sha256:[a-f0-9]{64}$`, image)
+}
+
+image_is_digest_only(image) if {
+	regex.match(`^[^/@]+(:[0-9]+)?(/[^:@]+)+@sha256:[a-f0-9]{64}$`, image)
+}
+
 image_is_mutable(image) if {
 	not contains(image, "@sha256:")
 	not regex.match(`:[^/]+$`, image)
@@ -118,11 +160,151 @@ image_is_mutable(image) if {
 default_deny_network_policy_exists if {
 	some document in documents
 	document.kind == "NetworkPolicy"
+	count(object.get(document.spec, "podSelector", {})) == 0
 	policy_types := object.get(document.spec, "policyTypes", [])
 	"Ingress" in policy_types
 	"Egress" in policy_types
 	count(object.get(document.spec, "ingress", [])) == 0
 	count(object.get(document.spec, "egress", [])) == 0
+}
+
+resource_quota_exists if {
+	some document in documents
+	document.kind == "ResourceQuota"
+	hard := object.get(document.spec, "hard", {})
+	every resource in {
+		"requests.cpu", "requests.memory", "limits.cpu", "limits.memory",
+		"pods", "services", "configmaps",
+	} {
+		object.get(hard, resource, null) != null
+	}
+}
+
+limit_range_exists if {
+	some document in documents
+	document.kind == "LimitRange"
+	some limit in object.get(document.spec, "limits", [])
+	object.get(limit, "type", "") == "Container"
+	every field in {"default", "defaultRequest", "min", "max", "maxLimitRequestRatio"} {
+		resources := object.get(limit, field, {})
+		object.get(resources, "cpu", null) != null
+		object.get(resources, "memory", null) != null
+	}
+}
+
+network_policy_ingress_rules contains ingress if {
+	some document in documents
+	document.kind == "NetworkPolicy"
+	some ingress in object.get(document.spec, "ingress", [])
+}
+
+network_policy_egress_rules contains egress if {
+	some document in documents
+	document.kind == "NetworkPolicy"
+	some egress in object.get(document.spec, "egress", [])
+}
+
+ingress_rule_is_narrow(ingress) if {
+	count(object.get(ingress, "from", [])) == 1
+	peer := ingress.from[0]
+	count(object.get(object.get(peer, "namespaceSelector", {}), "matchLabels", {})) > 0
+	count(object.get(object.get(peer, "podSelector", {}), "matchLabels", {})) > 0
+	object.get(ingress, "ports", []) == [{"protocol": "TCP", "port": 8080}]
+}
+
+prometheus_ingress_policy_exists if {
+	every ingress in network_policy_ingress_rules {
+		ingress_rule_is_narrow(ingress)
+	}
+	some document in documents
+	document.kind == "NetworkPolicy"
+	some ingress in object.get(document.spec, "ingress", [])
+	count(object.get(ingress, "from", [])) == 1
+	peer := ingress.from[0]
+	object.get(object.get(object.get(peer, "namespaceSelector", {}), "matchLabels", {}), "kubernetes.io/metadata.name", "") == "monitoring"
+	object.get(object.get(object.get(peer, "podSelector", {}), "matchLabels", {}), "app.kubernetes.io/name", "") == "prometheus"
+	object.get(ingress, "ports", []) == [{"protocol": "TCP", "port": 8080}]
+}
+
+dns_egress_policy_exists if {
+	count(network_policy_egress_rules) == 2
+	some document in documents
+	document.kind == "NetworkPolicy"
+	count(object.get(document.spec, "podSelector", {})) == 0
+	object.get(document.spec, "policyTypes", []) == ["Egress"]
+	count(object.get(document.spec, "egress", [])) == 1
+	egress := document.spec.egress[0]
+	count(object.get(egress, "to", [])) == 1
+	peer := egress.to[0]
+	object.get(object.get(object.get(peer, "namespaceSelector", {}), "matchLabels", {}), "kubernetes.io/metadata.name", "") == "kube-system"
+	object.get(object.get(object.get(peer, "podSelector", {}), "matchLabels", {}), "k8s-app", "") == "kube-dns"
+	ports := object.get(egress, "ports", [])
+	count(ports) == 2
+	{"protocol": "UDP", "port": 53} in ports
+	{"protocol": "TCP", "port": 53} in ports
+}
+
+rollouts_prometheus_egress_policy_exists if {
+	count(network_policy_egress_rules) == 2
+	some document in documents
+	document.kind == "NetworkPolicy"
+	object.get(document.spec, "podSelector", {}) == {"matchLabels": {"app.kubernetes.io/name": "argo-rollouts"}}
+	object.get(document.spec, "policyTypes", []) == ["Egress"]
+	count(object.get(document.spec, "egress", [])) == 1
+	egress := document.spec.egress[0]
+	count(object.get(egress, "to", [])) == 1
+	peer := egress.to[0]
+	object.get(object.get(object.get(peer, "namespaceSelector", {}), "matchLabels", {}), "kubernetes.io/metadata.name", "") == "monitoring"
+	object.get(object.get(object.get(peer, "podSelector", {}), "matchLabels", {}), "app.kubernetes.io/name", "") == "prometheus"
+	object.get(egress, "ports", []) == [{"protocol": "TCP", "port": 9090}]
+}
+
+deny contains message if {
+	some workload in workloads
+	not metadata_has_required_labels(workload.metadata)
+	message := sprintf(
+		"%s/%s: workload metadata must set owner, system, environment, and data-classification labels",
+		[workload.kind, workload.name],
+	)
+}
+
+deny contains message if {
+	some workload in workloads
+	not metadata_has_required_labels(workload.pod_metadata)
+	message := sprintf(
+		"%s/%s: pod template metadata must set owner, system, environment, and data-classification labels",
+		[workload.kind, workload.name],
+	)
+}
+
+deny contains message if {
+	some workload in workloads
+	metadata_has_required_labels(workload.metadata)
+	not metadata_values_are_valid(workload.metadata)
+	message := sprintf(
+		"%s/%s: workload environment, data-classification, or support-tier label is invalid",
+		[workload.kind, workload.name],
+	)
+}
+
+deny contains message if {
+	some pair in workload_containers
+	image := object.get(pair.container, "image", "")
+	not image_uses_approved_registry(image)
+	message := sprintf(
+		"%s/%s: container %s image %q is not from an approved registry",
+		[pair.workload.kind, pair.workload.name, pair.container.name, image],
+	)
+}
+
+deny contains message if {
+	some pair in workload_containers
+	image := object.get(pair.container, "image", "")
+	not image_is_digest_only(image)
+	message := sprintf(
+		"%s/%s: container %s image must use a sha256 digest only",
+		[pair.workload.kind, pair.workload.name, pair.container.name],
+	)
 }
 
 deny contains message if {
@@ -219,7 +401,32 @@ deny contains message if {
 	)
 }
 
-deny contains "Rendered manifests with workloads must include a default-deny NetworkPolicy for both ingress and egress" if {
+deny contains "Rendered manifests with workloads must include a namespace-wide default-deny NetworkPolicy for both ingress and egress" if {
 	count(workloads) > 0
 	not default_deny_network_policy_exists
+}
+
+deny contains "Rendered manifests with workloads must include a ResourceQuota for CPU, memory, pods, services, and configmaps" if {
+	count(workloads) > 0
+	not resource_quota_exists
+}
+
+deny contains "Rendered manifests with workloads must include a Container LimitRange with CPU and memory defaults, minimums, maximums, and ratios" if {
+	count(workloads) > 0
+	not limit_range_exists
+}
+
+deny contains "Rendered manifests with monitored workloads must restrict Prometheus ingress by namespace, pod label, and TCP port 8080" if {
+	count(workloads) > 0
+	not prometheus_ingress_policy_exists
+}
+
+deny contains "Rendered manifests with workloads must allow egress only to kube-system DNS pods on UDP and TCP port 53" if {
+	count(workloads) > 0
+	not dns_egress_policy_exists
+}
+
+deny contains "Rendered manifests with progressive workloads must allow only the Rollouts controller to query Prometheus on TCP port 9090" if {
+	count(workloads) > 0
+	not rollouts_prometheus_egress_policy_exists
 }

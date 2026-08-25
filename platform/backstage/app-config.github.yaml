@@ -1,0 +1,12 @@
+# Production-oriented authentication overlay. Values are resolved from the
+# process environment; no OAuth or publication credential belongs in this file.
+auth:
+  environment: production
+  providers:
+    github:
+      production:
+        clientId: ${AUTH_GITHUB_CLIENT_ID}
+        clientSecret: ${AUTH_GITHUB_CLIENT_SECRET}
+        signIn:
+          resolvers:
+            - resolver: usernameMatchingUserEntityName

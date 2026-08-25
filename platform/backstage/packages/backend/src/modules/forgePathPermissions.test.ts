@@ -19,7 +19,7 @@ describe('ForgePathPermissionPolicy', () => {
     expect(decision).toEqual({ result: AuthorizeResult.DENY });
   });
 
-  it('permits execution of only the ForgePath local renderer action', async () => {
+  it('permits execution of only the ForgePath end-to-end creation action', async () => {
     const decision = await policy.handle({
       permission: actionExecutePermission,
     });
@@ -30,7 +30,7 @@ describe('ForgePathPermissionPolicy', () => {
       resourceType: 'scaffolder-action',
       conditions: {
         rule: 'HAS_ACTION_ID',
-        params: { actionId: 'forgepath:renderSecureFastapi' },
+        params: { actionId: 'forgepath:createSecureFastapi' },
       },
     });
   });

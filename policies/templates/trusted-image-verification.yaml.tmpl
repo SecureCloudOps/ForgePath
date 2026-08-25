@@ -1,0 +1,50 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: forgepath-trusted-image-verification
+  annotations:
+    policies.kyverno.io/title: ForgePath Trusted Image Verification
+    policies.kyverno.io/category: Software Supply Chain Security
+    policies.kyverno.io/severity: critical
+    policies.kyverno.io/subject: Pod
+    kyverno.io/kyverno-version: 1.18.2
+    kyverno.io/kubernetes-version: "1.32"
+    forgepath.dev/template: runtime-trust-root-required
+spec:
+  admission: true
+  background: false
+  failurePolicy: Fail
+  validationFailureAction: Enforce
+  webhookTimeoutSeconds: 30
+  rules:
+    - name: verify-signature-and-provenance
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - kube-system
+                - kyverno
+      verifyImages:
+        - imageReferences:
+            - ghcr.io/securecloudops/*
+            - 127.0.0.1:5000/forgepath/*
+          mutateDigest: false
+          required: true
+          verifyDigest: true
+          attestors:
+            - entries:
+                - keys:
+                    publicKeys: |-
+                      __FORGEPATH_COSIGN_PUBLIC_KEY__
+          attestations:
+            - type: https://slsa.dev/provenance/v1
+              attestors:
+                - entries:
+                    - keys:
+                        publicKeys: |-
+                          __FORGEPATH_COSIGN_PUBLIC_KEY__

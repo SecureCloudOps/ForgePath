@@ -17,6 +17,9 @@ gitops/
 │           └── values.yaml
 ├── projects/
 │   └── forgepath-local.yaml
+├── platform/
+│   └── namespaces/
+│       └── secure-fastapi-service-local.yaml
 └── schemas/
     └── kubernetes/
         └── v1.32.0-standalone-strict/
@@ -29,10 +32,28 @@ trusted-artifact metadata. A tag is neither required nor accepted by the chart.
 
 The `forgepath-local` AppProject accepts only the ForgePath repository, the
 in-cluster API destination, and the `secure-fastapi-service-local` namespace.
-Its namespace allowlist contains only Deployment, Service, ServiceAccount, and
-NetworkPolicy. Every cluster-scoped kind is blacklisted, which also means this
-model does not create its destination namespace. Secret is absent from the
-allowlist and rendered Secrets fail validation.
+Its namespace allowlist contains only Rollout, AnalysisTemplate, Service,
+ServiceAccount, and the existing monitoring/dashboard resources. Every
+cluster-scoped kind is blacklisted, which
+also means this model does not install the Argo Rollouts or Prometheus Operator
+CRDs. Secret is absent from the allowlist and rendered Secrets fail validation.
+The Application cannot create namespaces and contains no managed namespace
+metadata. It targets only its fixed, pre-provisioned destination namespace.
+The platform-owned prerequisite under `platform/namespaces/` owns Namespace,
+version-pinned restricted Pod Security Admission labels, ResourceQuota,
+LimitRange, default-deny networking, DNS egress, and Prometheus ingress.
+
+Role and RoleBinding are deliberately absent from the namespace allowlist. The
+application has no Kubernetes API requirement, receives no RBAC grant, and runs
+without an automounted token. Controller permissions remain installation-owned
+prerequisites outside the application repository and are bound to separate
+controller ServiceAccounts.
+
+PolicyException is also absent from the allowlist and the AppProject destination
+does not include the dedicated `forgepath-policy-exceptions` namespace. Exception
+administration is a separate platform function with its own namespaced identity;
+an application repository cannot create or modify its policy exceptions through
+Argo CD.
 
 There is one Application and no ApplicationSet because no current fan-out or
 multi-environment requirement exists.
@@ -75,6 +96,12 @@ both `image.repository` and `image.digest` from that artifact's metadata. Run
 later observes the merged Git commit and reconciles it; it does not decide what
 is trusted or perform promotion.
 
+The Rollout uses the fixed sequence `5% -> analysis -> 25% -> analysis -> 50% ->
+analysis -> 100%`. The stable Service retains the original name and stays pinned
+to the last healthy ReplicaSet until all gates pass. Analysis consumes the
+existing Prometheus availability burn-rate recording rule and fails closed on
+missing data or query errors.
+
 ## Rollback
 
 Rollback is a Git revert or a new reviewed commit that restores the repository
@@ -87,14 +114,17 @@ Git.
 
 | Boundary | Owns |
 | --- | --- |
-| Application repository | Source code, tests, Dockerfile, and Helm chart |
+| Application repository | Source code, tests, Dockerfile, and namespaced workload/SLO Helm resources |
 | Trusted artifact pipeline | Build, scan, SBOM, signature, and trusted digest metadata |
+| Platform namespace path | Namespace lifecycle, PSA, quota, limits, and NetworkPolicy |
 | GitOps desired state | Environment configuration, approved artifact digest, Application, and AppProject |
 | Argo CD | Reconciliation only |
+| Argo Rollouts | ReplicaSet proportions, stable/canary Service selectors, and AnalysisRuns |
 | Kubernetes | Runtime state only |
 
-The destination namespace and Argo CD installation are prerequisites owned
-outside this static model. This repository does not apply either resource.
+The destination namespace must exist before application reconciliation. Argo CD,
+Argo Rollouts controller/CRDs, and Prometheus Operator CRDs are also
+platform-owned prerequisites.
 
 ## Disposable runtime validation
 

@@ -11,4 +11,4 @@ spec:
   type: service
   lifecycle: experimental
   owner: __FORGEPATH_OWNER__
-  system: forgepath
+  system: __FORGEPATH_SYSTEM__

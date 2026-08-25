@@ -316,8 +316,8 @@ kind load image-archive "$artifact_directory/image.oci.tar" --name "$cluster_nam
 # digest-qualified name. Add that local alias so containerd never resolves it
 # against a registry; both names point at the already-verified manifest digest.
 docker exec "${cluster_name}-control-plane" ctr --namespace k8s.io images tag \
-  "docker.io/$trusted_repository:0.1.0-local" \
-  "docker.io/$trusted_repository@$trusted_digest" >/dev/null
+  "$trusted_repository:0.1.0-local" \
+  "$trusted_repository@$trusted_digest" >/dev/null
 kube -n kube-system get pods >/dev/null
 
 manifest="$runtime_directory/argocd-install.yaml"

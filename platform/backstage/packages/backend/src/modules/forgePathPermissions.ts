@@ -29,7 +29,7 @@ export class ForgePathPermissionPolicy implements PermissionPolicy {
       return createScaffolderActionConditionalDecision(
         request.permission,
         scaffolderActionConditions.hasActionId({
-          actionId: 'forgepath:renderSecureFastapi',
+          actionId: 'forgepath:createSecureFastapi',
         }),
       );
     }

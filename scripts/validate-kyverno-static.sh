@@ -7,6 +7,7 @@ cd "$repository_root"
 
 kyverno_version='1.18.2'
 policy_directory='policies/kyverno'
+trusted_image_template='policies/templates/trusted-image-verification.yaml.tmpl'
 
 fail() {
   printf '[forgepath-kyverno-static] ERROR: %s\n' "$*" >&2
@@ -16,6 +17,24 @@ fail() {
 for tool in helm kyverno yq; do
   command -v "$tool" >/dev/null || fail "required static validation tool not found: $tool"
 done
+
+yq -e '
+  .apiVersion == "kyverno.io/v1" and
+  .kind == "ClusterPolicy" and
+  .spec.admission == true and
+  .spec.background == false and
+  .spec.failurePolicy == "Fail" and
+  .spec.validationFailureAction == "Enforce" and
+  (.spec.rules | length) == 1 and
+  (.spec.rules[0].verifyImages | length) == 1 and
+  .spec.rules[0].verifyImages[0].mutateDigest == false and
+  .spec.rules[0].verifyImages[0].required == true and
+  .spec.rules[0].verifyImages[0].verifyDigest == true and
+  (.spec.rules[0].verifyImages[0].attestors | length) == 1 and
+  .spec.rules[0].verifyImages[0].attestations[0].type == "https://slsa.dev/provenance/v1" and
+  (.spec.rules[0].verifyImages[0].attestations[0].attestors | length) == 1
+' "$trusted_image_template" >/dev/null ||
+  fail 'trusted-image template must fail closed and require signature plus SLSA provenance verification'
 
 [[ "$(kyverno version 2>&1)" == *"Version: $kyverno_version"* ]] ||
   fail "Kyverno CLI $kyverno_version is required"
@@ -90,6 +109,10 @@ workload-token.yaml|Pod specs must set automountServiceAccountToken=false.
 serviceaccount-token.yaml|Managed ServiceAccounts must set automountServiceAccountToken=false.
 host-network.yaml|hostNetwork is forbidden.
 host-pid.yaml|hostPID is forbidden.
+missing-metadata.yaml|Missing required workload metadata: set a non-empty forgepath.dev/owner label.
+invalid-metadata.yaml|Workload environment must be local, development, staging, or production
+unapproved-registry.yaml|Images must come from ghcr.io/securecloudops
+tagged-approved-image.yaml|Images must use a sha256 digest
 KYVERNO_FIXTURES
 
 while IFS='|' read -r fixture expected; do
@@ -104,5 +127,6 @@ host-pid-pod.yaml|hostPID is forbidden.
 RUNTIME_FIXTURES
 
 printf '[forgepath-kyverno-static] PASS secure paved-path rendered manifests admitted\n'
-printf '[forgepath-kyverno-static] PASS 16 synthetic insecure fixtures rejected\n'
+printf '[forgepath-kyverno-static] PASS 20 synthetic insecure fixtures rejected\n'
+printf '[forgepath-kyverno-static] PASS trusted-image template requires signature and SLSA provenance\n'
 printf '[forgepath-kyverno-static] VERSION Kyverno CLI %s\n' "$kyverno_version"

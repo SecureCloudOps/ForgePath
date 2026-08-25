@@ -11,14 +11,20 @@ spec:
     - namespace: secure-fastapi-service-local
       server: https://kubernetes.default.svc
   namespaceResourceWhitelist:
-    - group: apps
-      kind: Deployment
+    - group: ""
+      kind: ConfigMap
+    - group: argoproj.io
+      kind: AnalysisTemplate
+    - group: argoproj.io
+      kind: Rollout
     - group: ""
       kind: Service
     - group: ""
       kind: ServiceAccount
-    - group: networking.k8s.io
-      kind: NetworkPolicy
+    - group: monitoring.coreos.com
+      kind: PrometheusRule
+    - group: monitoring.coreos.com
+      kind: ServiceMonitor
   clusterResourceBlacklist:
     - group: "*"
       kind: "*"

@@ -1,9 +1,13 @@
 # ForgePath Kubernetes policy
 
 `kubernetes.rego` is the centralized ForgePath policy for Kubernetes workloads.
-It is evaluated with Conftest in combined-input mode so rules can reason across
-the complete Helm-rendered resource set, including the requirement for a
-default-deny NetworkPolicy.
+It is evaluated with Conftest in combined-input mode across the platform-owned
+namespace prerequisite and application render. The combined boundary must
+include a namespace-wide default-deny NetworkPolicy, ResourceQuota, LimitRange,
+a dual-selector Prometheus scrape exception, DNS-only application egress, and
+one Rollouts-controller-to-Prometheus egress exception on TCP 9090.
+The application chart is separately required to contain none of those
+platform-owned resources.
 
 Run the policy gate from the repository root:
 
@@ -19,7 +23,19 @@ Source templates are not treated as policy evidence.
 Validation-only Kyverno `ClusterPolicy` resources live in `policies/kyverno/`.
 They express the same core workload security intent at admission time and are
 configured with `validationFailureAction: Enforce` and `failurePolicy: Fail`.
-They contain no mutation or generation rules.
+They contain no mutation or generation rules. `platform-guardrails.yaml`
+additionally requires the following Pod labels and restricts images to approved
+registries and digest-only references:
+
+- `forgepath.dev/owner`
+- `forgepath.dev/system`
+- `forgepath.dev/environment`
+- `forgepath.dev/data-classification`
+- optional `forgepath.dev/support-tier` (`1` through `4`)
+
+The production registry prefix is `ghcr.io/securecloudops/`. A loopback
+registry prefix is accepted only in the named `forgepath-kyverno-test`
+namespace used by the disposable runtime proof.
 
 Run the offline Kyverno CLI suite with:
 
@@ -27,7 +43,54 @@ Run the offline Kyverno CLI suite with:
 make validate-kyverno-static
 ```
 
+## Controlled policy exceptions
+
+Policy exceptions are disabled unless the platform installation explicitly
+enables them and pins Kyverno's `exceptionNamespace` to
+`forgepath-policy-exceptions`. Exception resources live only in that namespace;
+the application AppProject cannot deliver them. The platform-owned
+`forgepath-policy-exception-admin` ServiceAccount receives namespaced CRUD only
+for `policyexceptions.kyverno.io` and no workload or policy-authoring rights.
+
+`exceptions/exception-boundary.yaml` admits only one exact `PolicyException`
+shape: one exact ClusterPolicy name, one exact rule name, and one exact Pod name
+in one exact namespace. It rejects wildcard, selector, subject, multi-policy,
+and multi-rule scope. Owner, justification, workload/namespace binding, future
+RFC3339 expiry, approver, approval time, and approval reference are mandatory.
+The exception must also carry a time condition bound to that same timestamp, so
+it stops matching even if its object remains. The boundary is admission-only
+because it evaluates request time and fails closed on creation or update;
+deletion remains available after expiry.
+
+```sh
+make validate-workload-exceptions-static
+```
+
+After explicit approval for a disposable cluster, the runtime proof enables
+Kyverno exceptions only in the dedicated namespace and runs the complete
+deny/allow/isolation/removal/deny sequence:
+
+```sh
+make validate-workload-exceptions-runtime
+```
+
 This is additive defense in depth: OPA/Conftest remains the pre-deployment CI
 gate, Argo CD remains the desired-state reconciler, and Kyverno is the runtime
 Kubernetes admission layer. Installation version, artifact checksum, and image
 digests are documented in `policies/kyverno/INSTALLATION.md`.
+
+## Signature and provenance trust root
+
+`policies/templates/trusted-image-verification.yaml.tmpl` is deliberately not a
+directly installable policy. The platform operator must inject a reviewed Cosign
+public key before applying it. The resulting fail-closed policy requires both an
+OCI image signature and a signed SLSA provenance v1 attestation for approved
+images; it never mutates a tag into a digest.
+
+The runtime harness generates a one-run key pair under its temporary directory,
+injects only the public key, signs and attests the isolated registry copy, then
+deletes the private key before the admission sequence completes. No private key,
+registry credential, or Kubernetes Secret is written to Git.
+Because this isolated proof has no external Rekor dependency, only its generated
+temporary policy sets `rekor.ignoreTlog: true`; the committed trust template
+retains transparency-log verification for production trust roots.

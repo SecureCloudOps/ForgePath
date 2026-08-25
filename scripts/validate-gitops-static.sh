@@ -14,7 +14,7 @@ elif [[ -n "${1:-}" ]]; then
 fi
 
 python_bin="${PYTHON_BIN:-python3.12}"
-for tool in "$python_bin" conftest helm jq kubeconform rg yq; do
+for tool in "$python_bin" conftest git helm jq kubeconform rg yq; do
   if ! command -v "$tool" >/dev/null; then
     printf 'required GitOps validation tool not found: %s\n' "$tool" >&2
     exit 1
@@ -28,13 +28,112 @@ chart="$repository_root/services/secure-fastapi-service/chart"
 values="$repository_root/gitops/environments/local/secure-fastapi-service/values.yaml"
 project="$repository_root/gitops/projects/forgepath-local.yaml"
 application="$repository_root/gitops/applications/secure-fastapi-service-local.yaml"
-metadata="${TRUSTED_ARTIFACT_METADATA:-$repository_root/.forgepath/trusted-artifact/metadata.json}"
+platform_namespace="$repository_root/gitops/platform/namespaces/secure-fastapi-service-local.yaml"
+metadata_explicit=false
+if [[ -n "${TRUSTED_ARTIFACT_METADATA:-}" ]]; then
+  metadata="$TRUSTED_ARTIFACT_METADATA"
+  metadata_explicit=true
+else
+  metadata="$repository_root/.forgepath/trusted-artifact/metadata.json"
+fi
+tracked_artifact_manifest="${TRUSTED_ARTIFACT_MANIFEST:-$repository_root/docs/evidence/manifests/ca4-trusted-artifact.json}"
 schema_directory="$repository_root/gitops/schemas/kubernetes/v1.32.0-standalone-strict"
 work_directory="$(mktemp -d)"
 cleanup() {
   rm -rf "$work_directory"
 }
 trap cleanup EXIT
+
+sha256_file() {
+  if command -v sha256sum >/dev/null; then
+    sha256sum "$1" | awk '{print $1}'
+  elif command -v shasum >/dev/null; then
+    shasum -a 256 "$1" | awk '{print $1}'
+  else
+    printf 'sha256sum or shasum is required for tracked artifact validation\n' >&2
+    return 1
+  fi
+}
+
+materialize_tracked_artifact_projection() {
+  local approved_repository='ghcr.io/securecloudops/secure-fastapi-service'
+  local current_template_revision digest expected_values_sha projection_directory
+  local repository source_revision values_sha
+
+  if [[ -s "$metadata" ]]; then
+    return
+  fi
+  if [[ "$metadata_explicit" == "true" ]]; then
+    printf 'trusted artifact metadata is missing: %s\n' "$metadata" >&2
+    return 1
+  fi
+  if [[ ! -s "$tracked_artifact_manifest" ]]; then
+    printf 'tracked trusted-artifact manifest is missing: %s\n' \
+      "$tracked_artifact_manifest" >&2
+    return 1
+  fi
+
+  jq -e --arg repository "$approved_repository" --arg values_path \
+    "gitops/environments/local/secure-fastapi-service/values.yaml" '
+      . as $manifest |
+      .schemaVersion == 1 and
+      .correctiveAction == "CA-4" and
+      .status == "closed" and
+      (.source.revision | test("^[a-f0-9]{40}$")) and
+      .source.dirty == false and
+      .source.reproducibleTimestamp == true and
+      .image.repository == $repository and
+      (.image.digest | test("^sha256:[a-f0-9]{64}$")) and
+      (["metadata.json", "sbom.spdx.json", "trivy-report.json",
+        "trivy-db-metadata.json", "image-digest.sig", "cosign.pub",
+        "image-digest.txt", "TRUSTED"] |
+        all(.[]; ($manifest.evidence[.] | type == "string" and
+          test("^[a-f0-9]{64}$")))) and
+      .gitops.path == $values_path and
+      (.gitops.sha256 | test("^[a-f0-9]{64}$")) and
+      .gitops.digestMatchesArtifact == true
+    ' "$tracked_artifact_manifest" >/dev/null || {
+      printf 'tracked trusted-artifact manifest is invalid: %s\n' \
+        "$tracked_artifact_manifest" >&2
+      return 1
+    }
+
+  source_revision="$(jq -er '.source.revision' "$tracked_artifact_manifest")"
+  current_template_revision="$(git log -1 --format=%H -- templates/secure-fastapi-service)"
+  if ! git cat-file -e "$source_revision^{commit}" 2>/dev/null ||
+     [[ "$source_revision" != "$current_template_revision" ]]; then
+    printf 'tracked artifact source does not match the current template revision\n' >&2
+    return 1
+  fi
+
+  expected_values_sha="$(jq -er '.gitops.sha256' "$tracked_artifact_manifest")"
+  values_sha="$(sha256_file "$values")"
+  if [[ "$values_sha" != "$expected_values_sha" ]]; then
+    printf 'tracked artifact manifest does not match GitOps desired state\n' >&2
+    return 1
+  fi
+
+  repository="$(jq -er '.image.repository' "$tracked_artifact_manifest")"
+  digest="$(jq -er '.image.digest' "$tracked_artifact_manifest")"
+  projection_directory="$work_directory/trusted-artifact-projection"
+  mkdir -p "$projection_directory"
+  jq -n --arg repository "$repository" --arg digest "$digest" '
+    {
+      schema_version: 1,
+      image: {
+        repository: $repository,
+        digest: $digest,
+        trusted_reference: ($repository + "@" + $digest)
+      },
+      vulnerability_scan: {result: "passed"},
+      signature: {verification_result: "passed"}
+    }
+  ' >"$projection_directory/metadata.json"
+  printf '%s\n' "$digest" >"$projection_directory/TRUSTED"
+  metadata="$projection_directory/metadata.json"
+  printf 'Using tracked trusted-artifact manifest for static validation: %s\n' \
+    "$tracked_artifact_manifest"
+}
 
 validate_argocd() {
   local candidate_project="$1"
@@ -50,9 +149,11 @@ validate_argocd() {
       .metadata.namespace == "argocd" and
       .spec.sourceRepos == [$repo] and
       .spec.destinations == [{"namespace": $namespace, "server": $server}] and
-      (.spec.namespaceResourceWhitelist | length) == 4 and
+      (.spec.namespaceResourceWhitelist | length) == 7 and
       ([.spec.namespaceResourceWhitelist[] | [.group, .kind]] | sort) ==
-        [["", "Service"], ["", "ServiceAccount"], ["apps", "Deployment"], ["networking.k8s.io", "NetworkPolicy"]] and
+        [["", "ConfigMap"], ["", "Service"], ["", "ServiceAccount"],
+         ["argoproj.io", "AnalysisTemplate"], ["argoproj.io", "Rollout"],
+         ["monitoring.coreos.com", "PrometheusRule"], ["monitoring.coreos.com", "ServiceMonitor"]] and
       .spec.clusterResourceBlacklist == [{"group": "*", "kind": "*"}] and
       (.spec.clusterResourceWhitelist == null)
     ' >/dev/null || return 1
@@ -74,13 +175,49 @@ validate_argocd() {
       .spec.destination == {"server": $server, "namespace": $namespace} and
       .spec.syncPolicy.automated.prune == true and
       .spec.syncPolicy.automated.selfHeal == true and
-      ((.spec.syncPolicy.syncOptions // []) | index("CreateNamespace=true") | not)
+      (.spec.syncPolicy.managedNamespaceMetadata == null) and
+      (.spec.syncPolicy.syncOptions == ["ApplyOutOfSyncOnly=true"]) and
+      ((.spec.syncPolicy.syncOptions // []) | index("CreateNamespace=true") == null)
     ' >/dev/null || return 1
 
   if rg -l '^kind:[[:space:]]*ApplicationSet[[:space:]]*$' gitops >/dev/null; then
     printf 'ApplicationSet is not authorized for the current single-service model\n' >&2
     return 1
   fi
+}
+
+validate_platform_namespace() {
+  local candidate="$1"
+  local documents
+
+  documents="$(yq -o=json -I=0 'select(. != null)' "$candidate")"
+  jq -se --arg namespace "$intended_namespace" '
+    length == 7 and
+    ([.[] | [(.apiVersion | split("/") | if length == 1 then "" else .[0] end), .kind]] | sort) ==
+      [["", "LimitRange"], ["", "Namespace"], ["", "ResourceQuota"],
+       ["networking.k8s.io", "NetworkPolicy"],
+       ["networking.k8s.io", "NetworkPolicy"],
+       ["networking.k8s.io", "NetworkPolicy"],
+       ["networking.k8s.io", "NetworkPolicy"]] and
+    ([.[] | select(.kind == "Namespace")] | length) == 1 and
+    all(.[] | select(.kind == "Namespace");
+      .metadata.name == $namespace and
+      .metadata.labels["forgepath.dev/managed-by"] == "platform" and
+      .metadata.labels["pod-security.kubernetes.io/enforce"] == "restricted" and
+      .metadata.labels["pod-security.kubernetes.io/enforce-version"] == "v1.32" and
+      .metadata.labels["pod-security.kubernetes.io/audit"] == "restricted" and
+      .metadata.labels["pod-security.kubernetes.io/warn"] == "restricted") and
+    all(.[] | select(.kind != "Namespace");
+      .metadata.namespace == $namespace and
+      .metadata.labels["forgepath.dev/managed-by"] == "platform") and
+    any(.[]; .kind == "NetworkPolicy" and
+      .metadata.name == "forgepath-platform-allow-rollouts-prometheus-egress" and
+      .spec.podSelector.matchLabels["app.kubernetes.io/name"] == "argo-rollouts" and
+      .spec.egress == [{"to": [{"namespaceSelector": {"matchLabels":
+        {"kubernetes.io/metadata.name": "monitoring"}}, "podSelector": {"matchLabels":
+        {"app.kubernetes.io/name": "prometheus"}}}],
+        "ports": [{"protocol": "TCP", "port": 9090}]}])
+  ' <<<"$documents" >/dev/null
 }
 
 read_trusted_reference() {
@@ -120,25 +257,43 @@ authorize_rendered() {
     return 1
   fi
 
+  if jq -se 'any(.[]; .kind == "Namespace")' <<<"$documents" >/dev/null; then
+    printf 'application chart must never render Namespace; namespace lifecycle is platform-owned\n' >&2
+    return 1
+  fi
+
   if ! jq -se --arg namespace "$intended_namespace" '
-    length == 4 and
+    length == 8 and
     all(.[ ]; .apiVersion and .kind and .metadata.name) and
     all(.[ ]; (.metadata.namespace // $namespace) == $namespace) and
     ([.[] | [(.apiVersion | split("/") | if length == 1 then "" else .[0] end), .kind]] | sort) ==
-      [["", "Service"], ["", "ServiceAccount"], ["apps", "Deployment"], ["networking.k8s.io", "NetworkPolicy"]]
+      [["", "ConfigMap"], ["", "Service"], ["", "Service"], ["", "ServiceAccount"],
+       ["argoproj.io", "AnalysisTemplate"], ["argoproj.io", "Rollout"],
+       ["monitoring.coreos.com", "PrometheusRule"], ["monitoring.coreos.com", "ServiceMonitor"]]
   ' <<<"$documents" >/dev/null; then
     printf 'rendered resources exceed the AppProject namespace/kind allowlist\n' >&2
     return 1
   fi
 
   if ! jq -se --arg reference "$trusted_reference" '
-    [.[] | select(.kind == "Deployment") | .spec.template.spec |
+    [.[] | select(.kind == "Rollout") | .spec.template.spec |
       ((.initContainers // []) + (.containers // []) + (.ephemeralContainers // []))[] |
       .image] as $images |
     ($images | length) > 0 and
     all($images[]; . == $reference and test("^[^@]+@sha256:[a-f0-9]{64}$"))
   ' <<<"$documents" >/dev/null; then
     printf 'rendered image does not exactly match the trusted immutable reference\n' >&2
+    return 1
+  fi
+
+  if ! jq -se '
+    [.[] | select(.kind == "AnalysisTemplate") |
+      .spec.metrics[] | select(.name == "availability-burn-rate")] as $metrics |
+    ($metrics | length) == 1 and
+    all($metrics[];
+      .count == 1 and .failureLimit == 0 and .consecutiveErrorLimit == 0)
+  ' <<<"$documents" >/dev/null; then
+    printf 'availability analysis must fail closed on its first failed or errored measurement\n' >&2
     return 1
   fi
 }
@@ -148,6 +303,7 @@ render_and_validate() {
   local output="$2"
   local trusted_reference="$3"
   local generated_service="$work_directory/generated-service"
+  local combined="$work_directory/combined.yaml"
   local metadata_repository metadata_digest marker_digest values_repository values_digest
 
   metadata_repository="$(jq -er '.image.repository' "$metadata")"
@@ -180,9 +336,14 @@ render_and_validate() {
   helm template secure-fastapi-service "$chart" \
     --namespace "$intended_namespace" --values "$candidate_values" >"$output"
   kubeconform -exit-on-error -strict -summary \
+    -skip AnalysisTemplate,PrometheusRule,Rollout,ServiceMonitor \
     -schema-location "file://$schema_directory/{{.ResourceKind}}{{.KindSuffix}}.json" \
     "$output" >/dev/null || return 1
-  conftest test --combine --policy policies "$output" >/dev/null || return 1
+  validate_platform_namespace "$platform_namespace" || return 1
+  cp "$platform_namespace" "$combined"
+  printf '\n---\n' >>"$combined"
+  cat "$output" >>"$combined"
+  conftest test --combine --policy policies "$combined" >/dev/null || return 1
   authorize_rendered "$output" "$trusted_reference"
 }
 
@@ -207,6 +368,10 @@ run_negative_suite() {
   local mutable_values="$work_directory/mutable-values.yaml"
   local unauthorized_namespace="$work_directory/unauthorized-namespace.yaml"
   local unauthorized_repository="$work_directory/unauthorized-repository.yaml"
+  local missing_psa="$work_directory/missing-psa.yaml"
+  local namespace_creation_enabled="$work_directory/namespace-creation-enabled.yaml"
+  local namespace_permission="$work_directory/namespace-permission.yaml"
+  local namespace_in_chart="$work_directory/namespace-in-chart.yaml"
   local secret_manifests="$work_directory/secret-manifests.yaml"
   local cluster_manifests="$work_directory/cluster-manifests.yaml"
   local policy_violation="$work_directory/policy-violation.yaml"
@@ -229,6 +394,27 @@ run_negative_suite() {
   expect_rejection 'unauthorized repository' validate_argocd \
     "$project" "$unauthorized_repository"
 
+  yq 'del((select(.kind == "Namespace") | .metadata.labels."pod-security.kubernetes.io/enforce"))' \
+    "$platform_namespace" >"$missing_psa"
+  expect_rejection 'missing platform-owned restricted Pod Security enforcement' \
+    validate_platform_namespace "$missing_psa"
+
+  yq '.spec.syncPolicy.syncOptions += ["CreateNamespace=true"]' \
+    "$application" >"$namespace_creation_enabled"
+  expect_rejection 'CreateNamespace=true reappeared' validate_argocd \
+    "$project" "$namespace_creation_enabled"
+
+  yq '.spec.clusterResourceWhitelist = [{"group": "", "kind": "Namespace"}]' \
+    "$project" >"$namespace_permission"
+  expect_rejection 'application AppProject namespace creation permission' validate_argocd \
+    "$namespace_permission" "$application"
+
+  cp "$rendered" "$namespace_in_chart"
+  printf '\n---\napiVersion: v1\nkind: Namespace\nmetadata:\n  name: forbidden\n' \
+    >>"$namespace_in_chart"
+  expect_rejection 'application chart Namespace manifest' authorize_rendered \
+    "$namespace_in_chart" "$trusted_reference"
+
   cp "$rendered" "$secret_manifests"
   printf '\n---\napiVersion: v1\nkind: Secret\nmetadata:\n  name: forbidden\ntype: Opaque\n' \
     >>"$secret_manifests"
@@ -246,7 +432,9 @@ run_negative_suite() {
   expect_rejection 'policy-violating rendered Helm output' run_policy "$policy_violation"
 }
 
+materialize_tracked_artifact_projection
 validate_argocd "$project" "$application"
+validate_platform_namespace "$platform_namespace"
 trusted_reference="$(read_trusted_reference)"
 rendered="$work_directory/rendered.yaml"
 render_and_validate "$values" "$rendered" "$trusted_reference"

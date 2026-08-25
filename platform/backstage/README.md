@@ -1,10 +1,10 @@
 # ForgePath Backstage
 
-This is a local-first Backstage bootstrap for the existing ForgePath paved
-path. It provides a catalog, TechDocs, a single software template, and
-read-only workload visibility. It does not publish source, register generated
-components remotely, deploy workloads, or replace ForgePath's renderer,
-security checks, trusted-artifact flow, Git desired state, Argo CD, or Kyverno.
+This is the identity-aware developer entry point for the ForgePath paved path.
+It provides a catalog, TechDocs, one constrained software template, safe local
+or GitHub publication, catalog registration, GitOps onboarding, and read-only
+workload visibility. It does not deploy workloads or replace ForgePath's
+renderer, trusted-artifact flow, Git desired state, Argo CD, or Kyverno.
 
 ## Pinned bootstrap
 
@@ -33,21 +33,56 @@ corepack yarn start
 Backstage binds to loopback only. Guest authentication and the in-memory
 database are suitable for this local proof, not for a shared deployment.
 
-## Generate a service without publishing
+## Create a secure service
 
-Choose **Create**, then **Secure FastAPI service**. The only template action,
-`forgepath:renderSecureFastapi`, invokes the repository-owned
-`templates/secure-fastapi-service/render.py`. Output is confined to:
+Choose **Create**, then **Create Secure FastAPI Service**. The only executable
+template action, `forgepath:createSecureFastapi`, validates the service name,
+owner, system, environment, classification, privilege and image constraints,
+Backstage identity, and publication target before invoking the repository-owned
+renderer. Generated output is confined to:
 
 ```text
 .forgepath/generated/<service-name>/
 ```
 
-The action refuses to overwrite non-empty output through the existing renderer.
-The permission policy allows only this action to execute, so Backstage's built-in
-publish and catalog-registration actions cannot run. Generated output includes
-`catalog-info.yaml`, `mkdocs.yml`, TechDocs content, owner and system metadata,
-and the same Helm chart and application source as the command-line paved path.
+Local mode then creates actual Git repositories, commits, onboarding branches,
+and PR descriptors beneath `.forgepath/published/<service-name>/`. It makes no
+network request and refuses existing output. The permission policy allows only
+the ForgePath action, so arbitrary built-in publish actions cannot run.
+
+GitHub mode is opt-in and fail-closed. Before generation it requires all of:
+
+- a non-guest authenticated Backstage user identity;
+- an organization, owner, system, and GitOps repository matching server-side
+  allowlists;
+- a short-lived installation token in `FORGEPATH_GITHUB_APP_TOKEN`; and
+- a narrow catalog registration token in
+  `FORGEPATH_BACKSTAGE_CATALOG_TOKEN`.
+
+The backend includes the exact GitHub auth module compatible with the pinned
+Backstage release. For a shared deployment, ensure developers exist as Catalog
+`User` entities (normally from organization ingestion), set
+`AUTH_GITHUB_CLIENT_ID` and `AUTH_GITHUB_CLIENT_SECRET`, and start with the
+authentication overlay:
+
+```sh
+corepack yarn start --config app-config.yaml --config app-config.github.yaml
+```
+
+The default config keeps guest auth only for the offline localhost demo; remote
+publication rejects both `user:default/guest` and `user:development/guest`.
+
+The GitHub App installation should be limited to the intended organization and
+GitOps repository with repository administration (creation and branch
+protection), contents, and pull-request write permissions. It creates a private
+service repository, initial `main`, a protected onboarding PR, required checks,
+catalog registration, and a separate GitOps onboarding PR. Tokens are read only
+from the process environment, never command arguments, generated files, logs, or
+Git. Argo CD remains the only deployment actor.
+
+Generated output includes `catalog-info.yaml`, TechDocs, complete owner/system/
+environment/classification metadata, a hardened chart, SLO resources, Argo
+Rollouts, nine explicit inherited controls, and the trusted-artifact workflow.
 
 ## Read-only Kubernetes and Argo CD visibility
 

@@ -1,12 +1,50 @@
-replicaCount: 2
+replicaCount: 20
 
 image:
-  repository: example.invalid/__FORGEPATH_SERVICE_NAME__
+  repository: __FORGEPATH_IMAGE_REPOSITORY__
   digest: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
   pullPolicy: IfNotPresent
 
+workloadMetadata:
+  owner: __FORGEPATH_OWNER_LABEL__
+  system: __FORGEPATH_SYSTEM__
+  environment: __FORGEPATH_ENVIRONMENT__
+  dataClassification: __FORGEPATH_DATA_CLASSIFICATION__
+  supportTier: "2"
+
 service:
   port: 80
+
+failureFixture:
+  enabled: false
+
+progressiveDelivery:
+  analysis:
+    prometheusAddress: http://prometheus-operated.monitoring.svc.cluster.local:9090
+    burnRateWindow: 5m
+    maxBurnRate: 14.4
+    initialDelay: 6m
+    timeoutSeconds: 10
+
+monitoring:
+  enabled: true
+  serviceMonitor:
+    interval: 30s
+    scrapeTimeout: 5s
+  prometheusAccess:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: monitoring
+    podSelector:
+      matchLabels:
+        app.kubernetes.io/name: prometheus
+  slo:
+    availabilityTarget: 0.999
+    latencyThresholdSeconds: 0.3
+    windowProfile: production
+  grafana:
+    dashboardLabel: grafana_dashboard
+    dashboardLabelValue: "1"
 
 resources:
   requests:
@@ -15,7 +53,3 @@ resources:
   limits:
     cpu: 500m
     memory: 256Mi
-
-networkPolicy:
-  allowIngress: false
-  ingressNamespaceSelector: {}

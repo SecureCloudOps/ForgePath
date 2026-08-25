@@ -1,12 +1,50 @@
-replicaCount: 1
+replicaCount: 20
 
 image:
-  repository: forgepath/secure-fastapi-service
-  digest: "sha256:14eb1fc9a1d8f6a433bd21efe671f92ac7526deccf79f7b5ee583422e4beef81"
+  repository: ghcr.io/securecloudops/secure-fastapi-service
+  digest: "sha256:148fa9472d55a1e093e1b31242928aa40cbe3681d025d1c8880c0d6e1bc20d4f"
   pullPolicy: IfNotPresent
+
+workloadMetadata:
+  owner: platform
+  system: forgepath
+  environment: local
+  dataClassification: internal
+  supportTier: "2"
 
 service:
   port: 80
+
+failureFixture:
+  enabled: false
+
+progressiveDelivery:
+  analysis:
+    prometheusAddress: http://prometheus-operated.monitoring.svc.cluster.local:9090
+    burnRateWindow: 5m
+    maxBurnRate: 14.4
+    initialDelay: 6m
+    timeoutSeconds: 10
+
+monitoring:
+  enabled: true
+  serviceMonitor:
+    interval: 30s
+    scrapeTimeout: 5s
+  prometheusAccess:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: monitoring
+    podSelector:
+      matchLabels:
+        app.kubernetes.io/name: prometheus
+  slo:
+    availabilityTarget: 0.999
+    latencyThresholdSeconds: 0.3
+    windowProfile: production
+  grafana:
+    dashboardLabel: grafana_dashboard
+    dashboardLabelValue: "1"
 
 resources:
   requests:
@@ -15,7 +53,3 @@ resources:
   limits:
     cpu: 500m
     memory: 256Mi
-
-networkPolicy:
-  allowIngress: false
-  ingressNamespaceSelector: {}

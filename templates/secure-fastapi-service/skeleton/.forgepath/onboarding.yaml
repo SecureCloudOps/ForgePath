@@ -1,0 +1,26 @@
+apiVersion: forgepath.dev/v1alpha1
+kind: ServiceOnboarding
+metadata:
+  name: __FORGEPATH_SERVICE_NAME__
+spec:
+  owner: __FORGEPATH_OWNER__
+  system: __FORGEPATH_SYSTEM__
+  environment: __FORGEPATH_ENVIRONMENT__
+  dataClassification: __FORGEPATH_DATA_CLASSIFICATION__
+  imageRepository: __FORGEPATH_IMAGE_REPOSITORY__
+  privileged: false
+  kubernetesApiPermissions: []
+  delivery:
+    strategy: argo-rollouts-canary
+    promotion: git-digest-pull-request
+    reconciliation: argocd
+  controls:
+    - non-root-read-only-container
+    - required-workload-metadata
+    - prometheus-slo-alerts
+    - progressive-delivery-analysis
+    - namespace-default-deny
+    - zero-application-rbac
+    - signed-sbom-attested-artifact
+    - immutable-gitops-promotion
+    - admission-policy-enforcement

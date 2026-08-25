@@ -58,7 +58,17 @@ scaffolder:
 forgepath:
   repositoryRoot: ../..
   generationRoot: ../../.forgepath/generated
+  simulationRoot: ../../.forgepath/published
   pythonExecutable: python3.12
+  allowedOwners:
+    - group:default/platform
+  allowedSystems:
+    - forgepath
+  allowedRepositoryOwners:
+    - SecureCloudOps
+  gitopsRepository: SecureCloudOps/forgepath-gitops
+  githubCodeowner: SecureCloudOps/platform
+  catalogApiUrl: http://localhost:7007/api/catalog
 
 techdocs:
   builder: local

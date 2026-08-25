@@ -43,13 +43,17 @@ The base image is pinned by digest and the runtime user is UID/GID 10001.
 ```sh
 helm lint chart
 helm template __FORGEPATH_SERVICE_NAME__ chart \
-  --set image.repository=registry.example.com/__FORGEPATH_SERVICE_NAME__ \
+  --set image.repository=__FORGEPATH_IMAGE_REPOSITORY__ \
   --set image.digest=sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 ```
 
-The default NetworkPolicy denies all ingress and egress. Enable
-`networkPolicy.allowIngress=true` only when a namespace-selected caller should
-reach port 8080. No egress is required by the generated application.
+The chart intentionally contains no Namespace, ResourceQuota, LimitRange, or
+NetworkPolicy. ForgePath provisions those controls as a platform-owned
+prerequisite before this chart can reconcile. The application AppProject has
+zero cluster-scoped permissions and targets only that exact governed namespace.
 
 Operational procedures are in [RUNBOOK.md](docs/RUNBOOK.md), security decisions
-in [SECURITY.md](docs/SECURITY.md), and TechDocs navigation in `mkdocs.yml`.
+in [SECURITY.md](docs/SECURITY.md), SLO definitions and demo windows in
+[SLO.md](docs/SLO.md), progressive delivery in
+[PROGRESSIVE_DELIVERY.md](docs/PROGRESSIVE_DELIVERY.md), and TechDocs navigation
+in `mkdocs.yml`.

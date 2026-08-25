@@ -3,5 +3,8 @@ site_description: ForgePath reference paved-path service
 nav:
   - Overview: index.md
   - Runtime: runtime.md
+  - Observability and SLO: observability.md
+  - Progressive delivery: progressive-delivery.md
+  - Incident exercise: incident-exercise.md
 plugins:
   - techdocs-core

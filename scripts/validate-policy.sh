@@ -21,6 +21,8 @@ trap cleanup EXIT
 
 rendered="$work_directory/rendered"
 helm_output="$work_directory/helm-output"
+combined="$work_directory/platform-and-application.yaml"
+platform_namespace="gitops/platform/namespaces/secure-fastapi-service-local.yaml"
 
 "$python_bin" templates/secure-fastapi-service/render.py \
   --output "$rendered" --service-name example-fastapi
@@ -32,7 +34,11 @@ if ! find "$helm_output" -type f -name '*.yaml' -print -quit | grep -q .; then
   exit 1
 fi
 
-conftest test --combine --policy policies "$helm_output"
+cp "$platform_namespace" "$combined"
+printf '\n---\n' >>"$combined"
+helm template validation "$rendered/chart" --namespace secure-fastapi-service-local \
+  >>"$combined"
+conftest test --combine --policy policies "$combined"
 
 assert_policy_rejects() {
   local fixture="$1"
@@ -80,7 +86,17 @@ workload-token.yaml|Deployment/workload-token: pod spec must set automountServic
 serviceaccount-token.yaml|ServiceAccount/serviceaccount-token: must set automountServiceAccountToken=false
 host-network.yaml|Deployment/host-network: hostNetwork is forbidden
 host-pid.yaml|Deployment/host-pid: hostPID is forbidden
-missing-default-deny.yaml|Rendered manifests with workloads must include a default-deny NetworkPolicy
+missing-default-deny.yaml|Rendered manifests with workloads must include a namespace-wide default-deny NetworkPolicy
+missing-metadata.yaml|Deployment/missing-metadata: workload metadata must set owner, system, environment, and data-classification labels
+invalid-metadata.yaml|Pod/invalid-metadata: workload environment, data-classification, or support-tier label is invalid
+unapproved-registry.yaml|Pod/unapproved-registry: container application image "docker.io/example/application@sha256:
+tagged-approved-image.yaml|Pod/tagged-approved-image: container application image must use a sha256 digest only
+weak-namespace-boundary.yaml|Rendered manifests with workloads must include a namespace-wide default-deny NetworkPolicy
+weak-namespace-boundary.yaml|Rendered manifests with workloads must include a ResourceQuota
+weak-namespace-boundary.yaml|Rendered manifests with workloads must include a Container LimitRange
+weak-namespace-boundary.yaml|Rendered manifests with monitored workloads must restrict Prometheus ingress
+weak-namespace-boundary.yaml|Rendered manifests with workloads must allow egress only to kube-system DNS pods
+weak-namespace-boundary.yaml|Rendered manifests with progressive workloads must allow only the Rollouts controller to query Prometheus
 POLICY_FIXTURES
 
 printf 'ForgePath Kubernetes policy validation passed.\n'

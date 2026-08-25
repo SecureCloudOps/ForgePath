@@ -1,0 +1,154 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: forgepath-platform-guardrails
+  annotations:
+    policies.kyverno.io/title: ForgePath Platform Guardrails
+    policies.kyverno.io/category: ForgePath Security
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: Pod
+    kyverno.io/kyverno-version: 1.18.2
+    kyverno.io/kubernetes-version: "1.32"
+spec:
+  admission: true
+  background: true
+  failurePolicy: Fail
+  validationFailureAction: Enforce
+  webhookTimeoutSeconds: 10
+  rules:
+    - name: require-workload-owner
+      match: &match-pods
+        any:
+          - resources:
+              kinds:
+                - Pod
+      exclude: &exclude-system-pods
+        any:
+          - resources:
+              namespaces:
+                - kube-system
+                - kyverno
+      validate:
+        allowExistingViolations: false
+        message: "Missing required workload metadata: set a non-empty forgepath.dev/owner label."
+        pattern:
+          metadata:
+            labels:
+              forgepath.dev/owner: "?*"
+
+    - name: require-workload-system
+      match: *match-pods
+      exclude: *exclude-system-pods
+      validate:
+        allowExistingViolations: false
+        message: "Missing required workload metadata: set a non-empty forgepath.dev/system label."
+        pattern:
+          metadata:
+            labels:
+              forgepath.dev/system: "?*"
+
+    - name: require-workload-environment
+      match: *match-pods
+      exclude: *exclude-system-pods
+      validate:
+        allowExistingViolations: false
+        message: "Missing required workload metadata: set a non-empty forgepath.dev/environment label."
+        pattern:
+          metadata:
+            labels:
+              forgepath.dev/environment: "?*"
+
+    - name: require-workload-data-classification
+      match: *match-pods
+      exclude: *exclude-system-pods
+      validate:
+        allowExistingViolations: false
+        message: "Missing required workload metadata: set a non-empty forgepath.dev/data-classification label."
+        pattern:
+          metadata:
+            labels:
+              forgepath.dev/data-classification: "?*"
+
+    - name: validate-workload-metadata-values
+      match: *match-pods
+      exclude: *exclude-system-pods
+      validate:
+        allowExistingViolations: false
+        message: >-
+          Workload environment must be local, development, staging, or production;
+          data classification must be public, internal, confidential, or restricted;
+          and an optional support tier must be 1, 2, 3, or 4.
+        deny:
+          conditions:
+            any:
+              - key: "{{ request.object.metadata.labels.\"forgepath.dev/environment\" || '' }}"
+                operator: AnyNotIn
+                value:
+                  - local
+                  - development
+                  - staging
+                  - production
+              - key: "{{ request.object.metadata.labels.\"forgepath.dev/data-classification\" || '' }}"
+                operator: AnyNotIn
+                value:
+                  - public
+                  - internal
+                  - confidential
+                  - restricted
+              - key: "{{ request.object.metadata.labels.\"forgepath.dev/support-tier\" || '1' }}"
+                operator: AnyNotIn
+                value:
+                  - "1"
+                  - "2"
+                  - "3"
+                  - "4"
+
+    - name: require-approved-image-registry
+      match: *match-pods
+      exclude: *exclude-system-pods
+      validate:
+        allowExistingViolations: false
+        message: >-
+          Images must come from ghcr.io/securecloudops or the named ForgePath
+          disposable-demo registry.
+        foreach:
+          - list: request.object.spec.[ephemeralContainers, initContainers, containers][]
+            deny:
+              conditions:
+                all:
+                  - key: "{{ regex_match('^(ghcr\\.io/securecloudops|127\\.0\\.0\\.1:5000/forgepath)/[^@]+@sha256:[a-f0-9]{64}$', element.image) }}"
+                    operator: Equals
+                    value: false
+
+    - name: restrict-disposable-demo-registry
+      match: *match-pods
+      exclude: *exclude-system-pods
+      validate:
+        allowExistingViolations: false
+        message: The loopback demo registry is allowed only in forgepath-kyverno-test.
+        foreach:
+          - list: request.object.spec.[ephemeralContainers, initContainers, containers][]
+            deny:
+              conditions:
+                all:
+                  - key: "{{ regex_match('^127\\.0\\.0\\.1:5000/forgepath/', element.image) }}"
+                    operator: Equals
+                    value: true
+                  - key: "{{ request.namespace }}"
+                    operator: NotEquals
+                    value: forgepath-kyverno-test
+
+    - name: require-image-digest
+      match: *match-pods
+      exclude: *exclude-system-pods
+      validate:
+        allowExistingViolations: false
+        message: Images must use a sha256 digest; tags and tag-plus-digest references are forbidden.
+        foreach:
+          - list: request.object.spec.[ephemeralContainers, initContainers, containers][]
+            deny:
+              conditions:
+                all:
+                  - key: "{{ regex_match('^[^/@]+(:[0-9]+)?(/[^:@]+)+@sha256:[a-f0-9]{64}$', element.image) }}"
+                    operator: Equals
+                    value: false
